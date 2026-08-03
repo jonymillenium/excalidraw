@@ -2,7 +2,11 @@ import { pointFrom, type GlobalPoint, type LocalPoint } from "@excalidraw/math";
 
 import { THEME } from "@excalidraw/common";
 
-import type { PointSnapLine, PointerSnapLine } from "../snapping";
+import type {
+  DistanceSnapLine,
+  PointSnapLine,
+  PointerSnapLine,
+} from "../snapping";
 import type { InteractiveCanvasAppState } from "../types";
 
 const SNAP_COLOR_LIGHT = "#ff2d78";
@@ -52,6 +56,11 @@ export const renderSnaps = (
       context.strokeStyle = snapColor;
 
       drawPointerSnapLine(snapLine, context, appState);
+    } else if (snapLine.type === "distance") {
+      context.lineWidth = snapWidth;
+      context.strokeStyle = snapColor;
+
+      drawDistanceLine(snapLine, context, appState, snapColor, snapHaloColor);
     } else if (snapLine.type === "gap") {
       context.lineWidth = snapWidth;
       context.strokeStyle = snapColor;
@@ -238,10 +247,13 @@ const drawGapLine = <Point extends LocalPoint | GlobalPoint>(
   }
 
   if (!appState.zenModeEnabled) {
-    drawGapDistanceLabel(
+    drawDistanceLabel(
       from,
       to,
       direction,
+      direction === "horizontal"
+        ? Math.abs(to[0] - from[0])
+        : Math.abs(to[1] - from[1]),
       appState,
       context,
       snapColor,
@@ -250,46 +262,129 @@ const drawGapLine = <Point extends LocalPoint | GlobalPoint>(
   }
 };
 
-const drawGapDistanceLabel = <Point extends LocalPoint | GlobalPoint>(
+const drawDistanceLine = (
+  distanceSnapLine: DistanceSnapLine,
+  context: CanvasRenderingContext2D,
+  appState: InteractiveCanvasAppState,
+  snapColor: string,
+  snapHaloColor: string,
+) => {
+  if (appState.zenModeEnabled) {
+    return;
+  }
+
+  const { points, direction, distance } = distanceSnapLine;
+  const [from, to] = points;
+  const tickSize = 5 / appState.zoom.value;
+
+  context.save();
+  context.setLineDash([3 / appState.zoom.value, 3 / appState.zoom.value]);
+  drawLine(from, to, context);
+  context.setLineDash([]);
+
+  if (direction === "horizontal") {
+    drawLine(
+      pointFrom(from[0], from[1] - tickSize),
+      pointFrom(from[0], from[1] + tickSize),
+      context,
+    );
+    drawLine(
+      pointFrom(to[0], to[1] - tickSize),
+      pointFrom(to[0], to[1] + tickSize),
+      context,
+    );
+  } else {
+    drawLine(
+      pointFrom(from[0] - tickSize, from[1]),
+      pointFrom(from[0] + tickSize, from[1]),
+      context,
+    );
+    drawLine(
+      pointFrom(to[0] - tickSize, to[1]),
+      pointFrom(to[0] + tickSize, to[1]),
+      context,
+    );
+  }
+
+  drawDistanceLabel(
+    from,
+    to,
+    direction,
+    distance,
+    appState,
+    context,
+    snapColor,
+    snapHaloColor,
+  );
+  context.restore();
+};
+
+const drawDistanceLabel = <Point extends LocalPoint | GlobalPoint>(
   from: Point,
   to: Point,
   direction: "horizontal" | "vertical",
+  distance: number,
   appState: InteractiveCanvasAppState,
   context: CanvasRenderingContext2D,
   snapColor: string,
   snapHaloColor: string,
 ) => {
-  const distance =
-    direction === "horizontal"
-      ? Math.abs(to[0] - from[0])
-      : Math.abs(to[1] - from[1]);
-
-  // Avoid illegible labels when the measured gap is too short on screen.
-  if (distance * appState.zoom.value < 24) {
-    return;
-  }
-
   const zoom = appState.zoom.value;
-  const label = Number.isInteger(distance)
-    ? `${distance}`
-    : `${Math.round(distance * 10) / 10}`;
-  const offset = 11 / zoom;
-  const x =
-    direction === "horizontal" ? (from[0] + to[0]) / 2 : from[0] + offset;
-  const y =
-    direction === "horizontal" ? from[1] - offset : (from[1] + to[1]) / 2;
+  const roundedDistance = Math.round(distance * 10) / 10;
+  const label = `${
+    Number.isInteger(roundedDistance)
+      ? roundedDistance
+      : roundedDistance.toFixed(1)
+  } px`;
 
   context.save();
   context.shadowBlur = 0;
-  context.font = `600 ${
+  context.font = `650 ${
     11 / zoom
   }px -apple-system, BlinkMacSystemFont, sans-serif`;
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.lineWidth = 4 / zoom;
-  context.strokeStyle = snapHaloColor;
-  context.strokeText(label, x, y);
+  const textWidth = context.measureText(label).width;
+  const paddingX = 5 / zoom;
+  const labelWidth = textWidth + paddingX * 2;
+  const labelHeight = 18 / zoom;
+  const radius = 5 / zoom;
+  const screenDistance = distance * zoom;
+  let x = (from[0] + to[0]) / 2;
+  let y = (from[1] + to[1]) / 2;
+
+  if (direction === "horizontal" && screenDistance < labelWidth * zoom + 8) {
+    y -= 13 / zoom;
+  } else if (
+    direction === "vertical" &&
+    screenDistance < labelHeight * zoom + 8
+  ) {
+    x += labelWidth / 2 + 8 / zoom;
+  }
+
+  context.beginPath();
+  if (context.roundRect) {
+    context.roundRect(
+      x - labelWidth / 2,
+      y - labelHeight / 2,
+      labelWidth,
+      labelHeight,
+      radius,
+    );
+  } else {
+    context.rect(
+      x - labelWidth / 2,
+      y - labelHeight / 2,
+      labelWidth,
+      labelHeight,
+    );
+  }
   context.fillStyle = snapColor;
+  context.fill();
+  context.lineWidth = 1 / zoom;
+  context.strokeStyle = snapHaloColor;
+  context.stroke();
+  context.fillStyle = "#ffffff";
   context.fillText(label, x, y);
   context.restore();
 };
