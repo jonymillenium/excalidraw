@@ -259,6 +259,7 @@ export const createEmptyCanvasPayload = (): CanvasPayload => ({
   elements: [],
   appState: {
     viewBackgroundColor: "#ffffff",
+    viewBackgroundColorMode: "theme",
     scrollX: 0,
     scrollY: 0,
     objectsSnapModeEnabled: true,

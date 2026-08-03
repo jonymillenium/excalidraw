@@ -127,6 +127,7 @@ export const exportCanvas = async (
         exportBackground,
         exportWithDarkMode: appState.exportWithDarkMode,
         viewBackgroundColor,
+        viewBackgroundColorMode: appState.viewBackgroundColorMode,
         exportPadding,
         exportScale: appState.exportScale,
         exportEmbedScene: appState.exportEmbedScene && type === "svg",

@@ -204,6 +204,7 @@ export type StaticCanvasAppState = Readonly<
     shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
     /** null indicates transparent bg */
     viewBackgroundColor: AppState["viewBackgroundColor"] | null;
+    viewBackgroundColorMode: AppState["viewBackgroundColorMode"];
     exportScale: AppState["exportScale"];
     selectedElementsAreBeingDragged: AppState["selectedElementsAreBeingDragged"];
     gridSize: AppState["gridSize"];
@@ -431,6 +432,7 @@ export interface AppState {
   currentItemRoundness: StrokeRoundness;
   currentItemArrowType: "sharp" | "round" | "elbow";
   viewBackgroundColor: string;
+  viewBackgroundColorMode: "theme" | "exact";
   scrollX: number;
   scrollY: number;
   scrollConstraints: ScrollConstraints | null;
@@ -821,6 +823,18 @@ export interface ExcalidrawProps {
     isMobile: boolean,
     appState: UIAppState,
   ) => JSX.Element | null;
+  /**
+   * Host actions rendered as first-class tools in the floating toolbar.
+   * Desktop/tablet render icon buttons in the toolbar island; phone layouts
+   * keep the same actions available in the extra-tools menu.
+   */
+  toolbarActions?: readonly {
+    id: string;
+    label: string;
+    icon: JSX.Element;
+    onSelect: () => void;
+    disabled?: boolean;
+  }[];
   langCode?: Language["code"];
   viewModeEnabled?: boolean;
   /**

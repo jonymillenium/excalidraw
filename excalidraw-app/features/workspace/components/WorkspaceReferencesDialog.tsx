@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { Excalidraw } from "@excalidraw/excalidraw";
+
 import { createViewThumbnail } from "../services/canvasThumbnail";
 
 import { WorkspaceDialog } from "./WorkspaceDialog";
@@ -235,8 +237,12 @@ export const WorkspaceReferencesDialog = ({
 
   return (
     <WorkspaceDialog
-      title={initialTarget ? "Vista previa vinculada" : "Enlazar contenido"}
-      description="Referencia proyectos, lienzos o una vista concreta sin duplicarlos. Una vista abre directamente su sector, zoom y encuadre guardados."
+      title={
+        initialTarget
+          ? "Vista previa en solo lectura"
+          : "Biblioteca de proyectos"
+      }
+      description="Explora tus proyectos y coloca en el lienzo un acceso directo a un proyecto, un lienzo o una vista concreta. Las vistas conservan su sector, zoom y encuadre."
       onClose={onClose}
       size="wide"
     >
@@ -357,20 +363,52 @@ export const WorkspaceReferencesDialog = ({
           </div>
 
           <div className="workspace-references__preview">
-            {referenceKind === "view" && viewThumbnail ? (
-              <img
-                src={viewThumbnail}
-                alt={`Vista previa del sector ${
-                  selectedView?.name ?? "guardado"
+            {previewCanvas ? (
+              <div
+                className="workspace-references__preview-canvas"
+                aria-label={`Vista previa navegable de ${
+                  selectedCanvas?.name ?? "lienzo"
                 }`}
-              />
+              >
+                <Excalidraw
+                  key={`${previewCanvas.id}:${
+                    referenceKind === "view"
+                      ? selectedView?.id ?? "view"
+                      : "canvas"
+                  }`}
+                  name={previewCanvas.name}
+                  initialData={{
+                    elements: previewCanvas.payload.elements,
+                    appState: previewCanvas.payload.appState,
+                    files: previewCanvas.files,
+                    scrollToContent: referenceKind !== "view" || !selectedView,
+                  }}
+                  initialState={
+                    referenceKind === "view" && selectedView
+                      ? {
+                          viewport: {
+                            target: selectedView.rect,
+                            fit: "contain",
+                            offsets: { ui: true },
+                          },
+                        }
+                      : undefined
+                  }
+                  viewModeEnabled={true}
+                  interaction={{
+                    enabled: { links: true, navigation: true },
+                  }}
+                  ui={{ enabled: { zoom: true } }}
+                  autoFocus={false}
+                />
+              </div>
             ) : selectedCanvas?.thumbnail ? (
               <img
                 src={selectedCanvas.thumbnail}
                 alt={`Vista previa de ${selectedCanvas.name}`}
               />
             ) : (
-              <div>
+              <div className="workspace-references__preview-fallback">
                 <span aria-hidden="true">⌗</span>
                 <strong>
                   {selectedProject?.protection.enabled
@@ -432,7 +470,7 @@ export const WorkspaceReferencesDialog = ({
                 })
               }
             >
-              Insertar proyecto
+              Colocar proyecto
             </button>
             <button
               type="button"
@@ -454,7 +492,7 @@ export const WorkspaceReferencesDialog = ({
                 })
               }
             >
-              Insertar lienzo
+              Colocar lienzo
             </button>
             <button
               type="button"
@@ -479,7 +517,7 @@ export const WorkspaceReferencesDialog = ({
                 })
               }
             >
-              Insertar vista
+              Colocar vista
             </button>
           </footer>
         )}

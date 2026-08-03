@@ -110,6 +110,7 @@ exports[`exportToSvg > with default arguments 1`] = `
   "toast": null,
   "userToFollow": null,
   "viewBackgroundColor": "#ffffff",
+  "viewBackgroundColorMode": "theme",
   "viewModeEnabled": false,
   "zenModeEnabled": false,
   "zoom": {

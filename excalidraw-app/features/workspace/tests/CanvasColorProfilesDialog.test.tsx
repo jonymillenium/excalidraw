@@ -11,6 +11,7 @@ describe("CanvasColorProfilesDialog", () => {
         profiles={[]}
         onSave={onSave}
         onDelete={vi.fn().mockResolvedValue(undefined)}
+        onResetFactory={vi.fn().mockResolvedValue(undefined)}
         onClose={vi.fn()}
       />,
     );
@@ -27,5 +28,26 @@ describe("CanvasColorProfilesDialog", () => {
       backgroundColor: "#000000",
       elementColor: "#757575",
     });
+  });
+
+  it("restores the original Excalidraw style after confirmation", async () => {
+    const onResetFactory = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CanvasColorProfilesDialog
+        profiles={[]}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+        onResetFactory={onResetFactory}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restaurar apariencia original" }),
+    );
+
+    await waitFor(() => expect(onResetFactory).toHaveBeenCalledOnce());
+    expect(screen.getByText("#ffffff")).toBeInTheDocument();
+    expect(screen.getByText("#1e1e1e")).toBeInTheDocument();
   });
 });

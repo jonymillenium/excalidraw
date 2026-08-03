@@ -125,6 +125,35 @@ describe("findShapeByKey()", () => {
   });
 });
 
+describe("props.toolbarActions", () => {
+  it("renders and invokes host tools from the floating toolbar", async () => {
+    const onSelect = vi.fn();
+    await render(
+      <Excalidraw
+        toolbarActions={[
+          {
+            id: "workspace-library",
+            label: "Workspace library",
+            icon: <svg aria-hidden="true" />,
+            onSelect,
+          },
+        ]}
+      />,
+    );
+
+    const action = GlobalTestState.renderResult.getByRole("button", {
+      name: "Workspace library",
+    });
+    fireEvent.click(action);
+
+    expect(action).toHaveAttribute(
+      "data-testid",
+      "toolbar-host-action-workspace-library",
+    );
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("props.activeTool (forced tool)", () => {
   const h = window.h;
   const mouse = new Pointer("mouse");

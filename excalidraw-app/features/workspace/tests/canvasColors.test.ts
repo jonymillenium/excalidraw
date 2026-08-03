@@ -45,7 +45,7 @@ describe("canvas color profiles", () => {
     expect(profile).toMatchObject({
       name: "Perfil 1",
       backgroundColor: "#ffffff",
-      elementColor: "#1b1b1f",
+      elementColor: "#1e1e1e",
     });
   });
 });

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from "react";
 
 import {
   Excalidraw,
@@ -43,7 +49,11 @@ import {
   normalizeViewOrder,
 } from "../domain/views";
 import { getInitialEditorAppState } from "../domain/editorFeatures";
-import { normalizeCanvasColorProfiles } from "../domain/canvasColors";
+import {
+  DEFAULT_CANVAS_BACKGROUND_COLOR,
+  DEFAULT_CANVAS_ELEMENT_COLOR,
+  normalizeCanvasColorProfiles,
+} from "../domain/canvasColors";
 import {
   createWorkspaceReferenceLink,
   getSelectedWorkspaceReferenceTarget,
@@ -102,6 +112,89 @@ const withFolderPrefixes = (folders: string[][], path: string[]) => {
   return [...next.values()];
 };
 
+type WorkspaceToolbarIconName =
+  | "canvases"
+  | "views"
+  | "create"
+  | "present"
+  | "export"
+  | "more";
+
+const WorkspaceToolbarIcon = ({ name }: { name: WorkspaceToolbarIconName }) => {
+  if (name === "canvases" || name === "views") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        <path d={name === "canvases" ? "M9 3v18" : "M15 3v18"} />
+      </svg>
+    );
+  }
+  if (name === "create") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 4v16M4 12h16" />
+      </svg>
+    );
+  }
+  if (name === "present") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m9 6 9 6-9 6V6Z" />
+      </svg>
+    );
+  }
+  if (name === "export") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 15V3m0 0L7 8m5-5 5 5M5 13v7h14v-7" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="5" cy="12" r="1.4" />
+      <circle cx="12" cy="12" r="1.4" />
+      <circle cx="19" cy="12" r="1.4" />
+    </svg>
+  );
+};
+
+const WorkspaceLibraryIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="20"
+    height="20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <rect x="3" y="4" width="8" height="7" rx="1.5" />
+    <rect x="13" y="4" width="8" height="7" rx="1.5" />
+    <rect x="3" y="13" width="8" height="7" rx="1.5" />
+    <path d="M15 16.5h4M17 14.5v4" />
+  </svg>
+);
+
+const keepOnlyCurrentToolbarMenuOpen = (
+  event: SyntheticEvent<HTMLDetailsElement>,
+) => {
+  const current = event.currentTarget;
+  if (!current.open) {
+    return;
+  }
+  current.parentElement
+    ?.querySelectorAll<HTMLDetailsElement>("details[open]")
+    .forEach((menu) => {
+      if (menu !== current) {
+        menu.removeAttribute("open");
+      }
+    });
+};
+
 const EditorCanvas = ({
   repository,
   projectId,
@@ -118,6 +211,7 @@ const EditorCanvas = ({
   onFlush,
   onStatus,
   onOpenReference,
+  onBrowseReferences,
 }: {
   repository: WorkspaceRepository;
   projectId: string;
@@ -134,6 +228,7 @@ const EditorCanvas = ({
   onFlush: (flush: () => Promise<void>) => void;
   onStatus: (status: SaveStatus, error?: Error) => void;
   onOpenReference: (target: WorkspaceReferenceTarget) => void;
+  onBrowseReferences: () => void;
 }) => {
   const [editorApi, setEditorApi] = useState<ExcalidrawImperativeAPI | null>(
     null,
@@ -321,6 +416,19 @@ const EditorCanvas = ({
         }
         theme={theme}
         onThemeChange={setThemePreference}
+        toolbarActions={
+          presentation
+            ? undefined
+            : [
+                {
+                  id: "workspace-library",
+                  label: "Biblioteca de proyectos, lienzos y vistas",
+                  icon: <WorkspaceLibraryIcon />,
+                  onSelect: () => onBrowseReferences(),
+                  disabled: readOnly,
+                },
+              ]
+        }
         onLinkOpen={(element, event) => {
           const reference = parseWorkspaceReferenceLink(element.link);
           if (reference) {
@@ -498,7 +606,8 @@ export const ProjectWorkspace = ({
     null,
   );
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(false);
+  const [isExportingProject, setIsExportingProject] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState<string>();
   const [readOnly, setReadOnly] = useState(false);
@@ -508,6 +617,7 @@ export const ProjectWorkspace = ({
   const criticalSaveRef = useRef<Promise<void>>(Promise.resolve());
   const leaseRef = useRef(new CanvasLease());
   const openedTargetViewRef = useRef<string | undefined>(undefined);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => setActiveProfileKey(profileKey), [profileKey]);
 
@@ -522,6 +632,39 @@ export const ProjectWorkspace = ({
     closePanelsOnMobile();
     media.addEventListener("change", closePanelsOnMobile);
     return () => media.removeEventListener("change", closePanelsOnMobile);
+  }, []);
+
+  useEffect(() => {
+    const closeToolbarMenus = (restoreFocus = false) => {
+      toolbarRef.current
+        ?.querySelectorAll<HTMLDetailsElement>("details[open]")
+        .forEach((menu) => {
+          menu.removeAttribute("open");
+          if (restoreFocus) {
+            menu.querySelector<HTMLElement>("summary")?.focus();
+          }
+        });
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        toolbarRef.current &&
+        event.target instanceof Node &&
+        !toolbarRef.current.contains(event.target)
+      ) {
+        closeToolbarMenus();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeToolbarMenus(true);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   const refreshMetadata = useCallback(async () => {
@@ -668,15 +811,25 @@ export const ProjectWorkspace = ({
       nextProfiles: Array<CanvasColorProfile | null>,
       profileToApply?: CanvasColorProfile,
       applyToExistingElements = false,
+      restoreFactoryStyle = false,
     ) => {
       if (!api || !loadedCanvas || readOnly) {
         return;
       }
       const normalizedProfiles = normalizeCanvasColorProfiles(nextProfiles);
-      const appState = profileToApply
+      const appState = restoreFactoryStyle
+        ? {
+            ...api.getAppState(),
+            viewBackgroundColor: DEFAULT_CANVAS_BACKGROUND_COLOR,
+            viewBackgroundColorMode: "theme" as const,
+            currentItemStrokeColor: DEFAULT_CANVAS_ELEMENT_COLOR,
+            currentItemBackgroundColor: "transparent",
+          }
+        : profileToApply
         ? {
             ...api.getAppState(),
             viewBackgroundColor: profileToApply.backgroundColor,
+            viewBackgroundColorMode: "exact" as const,
             currentItemStrokeColor: profileToApply.elementColor,
           }
         : api.getAppState();
@@ -691,7 +844,7 @@ export const ProjectWorkspace = ({
             )
           : api.getSceneElementsIncludingDeleted();
 
-      if (profileToApply) {
+      if (profileToApply || restoreFactoryStyle) {
         api.updateScene({
           elements,
           appState,
@@ -975,6 +1128,36 @@ export const ProjectWorkspace = ({
     }
   };
 
+  const handleProjectExport = async () => {
+    if (isExportingProject) {
+      return;
+    }
+    setIsExportingProject(true);
+    setError(undefined);
+    try {
+      await flushAll();
+      await downloadProject(repository, projectId);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : "No se pudo exportar el proyecto.",
+      );
+    } finally {
+      setIsExportingProject(false);
+    }
+  };
+
+  const startPresentation = () => {
+    const index = Math.max(
+      0,
+      views.findIndex((view) => view.id === selectedViewId),
+    );
+    if (views[index]) {
+      openView(views[index], index);
+    }
+  };
+
   const handleFlushReady = useCallback((flush: () => Promise<void>) => {
     flushRef.current = flush;
   }, []);
@@ -1035,102 +1218,269 @@ export const ProjectWorkspace = ({
             >
               ←
             </button>
-            <div>
-              <strong>{project.name}</strong>
-              <span>/</span>
-              <span>{loadedCanvas.name}</span>
-            </div>
-          </div>
-          <div className="project-workspace__status" role="status">
-            <span className={`save-status save-status--${saveStatus}`}>
-              {saveStatus === "saving"
-                ? "Guardando…"
-                : saveStatus === "error"
-                ? "Error al guardar"
-                : "Guardado"}
-            </span>
-            {readOnly && <span className="workspace-badge">Solo lectura</span>}
-          </div>
-          <div className="project-workspace__actions">
             <button
-              className="workspace-button workspace-button--compact project-action--references"
-              onClick={() => setReferenceDialog({ mode: "browse" })}
-              disabled={readOnly}
-            >
-              Enlazar
-            </button>
-            <button
-              className="workspace-button workspace-button--compact project-action--ai"
-              onClick={() => setShowOpenRouter(true)}
-            >
-              IA · OpenRouter
-            </button>
-            <button
-              className="workspace-button workspace-button--compact project-action--colors"
-              onClick={() => setShowColorProfiles(true)}
-              disabled={readOnly}
-            >
-              Colores del lienzo
-            </button>
-            <button
-              className="workspace-button workspace-button--compact project-action--canvases"
+              className="project-toolbar-button project-toolbar-button--icon"
+              type="button"
               onClick={() => {
                 if (!leftOpen) {
                   setRightOpen(false);
                 }
                 setLeftOpen((open) => !open);
               }}
+              aria-label={leftOpen ? "Ocultar lienzos" : "Mostrar lienzos"}
+              aria-controls="canvas-sidebar"
+              aria-expanded={leftOpen}
+              title={leftOpen ? "Ocultar lienzos" : "Mostrar lienzos"}
             >
-              {leftOpen ? "Ocultar lienzos" : "Mostrar lienzos"}
+              <WorkspaceToolbarIcon name="canvases" />
             </button>
+            <div className="project-workspace__identity">
+              <div className="project-workspace__path">
+                <strong>{project.name}</strong>
+                <span aria-hidden="true">/</span>
+                <span>{loadedCanvas.name}</span>
+              </div>
+              <div className="project-workspace__status" role="status">
+                <span className={`save-status save-status--${saveStatus}`}>
+                  {saveStatus === "saving"
+                    ? "Guardando…"
+                    : saveStatus === "error"
+                    ? "Error al guardar"
+                    : "Guardado"}
+                </span>
+                {readOnly && (
+                  <span className="workspace-badge">Solo lectura</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div
+            ref={toolbarRef}
+            className="project-workspace__actions"
+            role="toolbar"
+            aria-label="Herramientas del proyecto"
+          >
+            <details
+              className="workspace-menu workspace-menu--topbar"
+              onToggle={keepOnlyCurrentToolbarMenuOpen}
+            >
+              <summary
+                className="project-toolbar-button"
+                role="button"
+                aria-label="Crear"
+                aria-haspopup="menu"
+                title="Crear"
+              >
+                <WorkspaceToolbarIcon name="create" />
+                <span className="project-toolbar-button__label">Crear</span>
+              </summary>
+              <div className="workspace-menu__items" role="menu">
+                <span className="workspace-menu__label">CREAR</span>
+                <button
+                  role="menuitem"
+                  disabled={readOnly}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    setShowOpenRouter(true);
+                  }}
+                >
+                  <strong>Crear con IA</strong>
+                  <small>Texto, archivos y contenido multimodal</small>
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={readOnly}
+                  onClick={async (event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    try {
+                      await flushAll();
+                      const created = await repository.createCanvas(
+                        projectId,
+                        undefined,
+                        projectKey,
+                      );
+                      await refreshMetadata();
+                      onProjectChanged();
+                      onNavigateCanvas(created.id);
+                    } catch (createError) {
+                      setError(
+                        createError instanceof Error
+                          ? createError.message
+                          : "No se pudo crear el lienzo.",
+                      );
+                    }
+                  }}
+                >
+                  <strong>Nuevo lienzo</strong>
+                  <small>Añadir otro espacio a este proyecto</small>
+                </button>
+              </div>
+            </details>
             <button
-              className="workspace-button workspace-button--compact project-action--views"
+              className="project-toolbar-button project-toolbar-button--present"
+              type="button"
+              disabled={!api || !views.length}
+              onClick={startPresentation}
+              title={
+                views.length
+                  ? "Presentar recorrido de vistas"
+                  : "Guarda una vista para poder presentar"
+              }
+            >
+              <WorkspaceToolbarIcon name="present" />
+              <span className="project-toolbar-button__label">Presentar</span>
+            </button>
+            <details
+              className="workspace-menu workspace-menu--topbar workspace-menu--export"
+              onToggle={keepOnlyCurrentToolbarMenuOpen}
+            >
+              <summary
+                className="project-toolbar-button"
+                role="button"
+                aria-label="Exportar"
+                aria-haspopup="menu"
+                title="Exportar"
+              >
+                <WorkspaceToolbarIcon name="export" />
+                <span className="project-toolbar-button__label">Exportar</span>
+              </summary>
+              <div className="workspace-menu__items" role="menu">
+                <span className="workspace-menu__label">LIENZO ACTUAL</span>
+                <button
+                  role="menuitem"
+                  disabled={!api}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    void handleCanvasExport("png");
+                  }}
+                >
+                  Imagen PNG
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={!api}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    void handleCanvasExport("jpg");
+                  }}
+                >
+                  Imagen JPG
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={!api}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    void handleCanvasExport("svg");
+                  }}
+                >
+                  Vector SVG
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={!api}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    void handleCanvasExport("excalidraw");
+                  }}
+                >
+                  Archivo .excalidraw
+                </button>
+                <div className="workspace-menu__separator" />
+                <span className="workspace-menu__label">PROYECTO COMPLETO</span>
+                <button
+                  role="menuitem"
+                  disabled={isExportingProject}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    void handleProjectExport();
+                  }}
+                >
+                  <strong>
+                    {isExportingProject
+                      ? "Preparando proyecto…"
+                      : "Backup del proyecto"}
+                  </strong>
+                  <small>Incluye todos sus lienzos, vistas y archivos</small>
+                </button>
+              </div>
+            </details>
+            <button
+              className="project-toolbar-button project-toolbar-button--icon"
+              type="button"
               onClick={() => {
                 if (!rightOpen) {
                   setLeftOpen(false);
                 }
                 setRightOpen((open) => !open);
               }}
+              aria-label={rightOpen ? "Ocultar vistas" : "Mostrar vistas"}
+              aria-controls="views-sidebar"
+              aria-expanded={rightOpen}
+              title={rightOpen ? "Ocultar vistas" : "Mostrar vistas"}
             >
-              {rightOpen ? "Ocultar vistas" : "Mostrar vistas"}
+              <WorkspaceToolbarIcon name="views" />
             </button>
-            {project.protection.enabled && (
-              <button
-                className="workspace-button workspace-button--compact"
-                onClick={async () => {
-                  await flushAll();
-                  onLock();
-                }}
-              >
-                Bloquear
-              </button>
-            )}
-            <button
-              className="workspace-button workspace-button--compact workspace-export-project-button"
-              onClick={() => void downloadProject(repository, projectId)}
+            <details
+              className="workspace-menu workspace-menu--topbar"
+              onToggle={keepOnlyCurrentToolbarMenuOpen}
             >
-              Exportar proyecto
-            </button>
-            <details className="workspace-menu workspace-menu--export">
               <summary
-                className="workspace-button workspace-button--compact"
-                aria-label="Exportar lienzo"
+                className="project-toolbar-button project-toolbar-button--icon"
+                role="button"
+                aria-label="Más opciones"
+                aria-haspopup="menu"
+                title="Más opciones"
               >
-                Exportar lienzo
+                <WorkspaceToolbarIcon name="more" />
               </summary>
-              <div className="workspace-menu__items">
-                <button onClick={() => void handleCanvasExport("png")}>
-                  Imagen PNG
+              <div className="workspace-menu__items" role="menu">
+                <span className="workspace-menu__label">LIENZO</span>
+                <button
+                  role="menuitem"
+                  disabled={readOnly}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    setShowColorProfiles(true);
+                  }}
+                >
+                  <strong>Apariencia del lienzo</strong>
+                  <small>Perfiles de color y estilo original</small>
                 </button>
-                <button onClick={() => void handleCanvasExport("jpg")}>
-                  Imagen JPG
-                </button>
-                <button onClick={() => void handleCanvasExport("svg")}>
-                  Vector SVG
-                </button>
-                <button onClick={() => void handleCanvasExport("excalidraw")}>
-                  Archivo .excalidraw
-                </button>
+                {project.protection.enabled && (
+                  <>
+                    <div className="workspace-menu__separator" />
+                    <span className="workspace-menu__label">SEGURIDAD</span>
+                    <button
+                      role="menuitem"
+                      onClick={async (event) => {
+                        event.currentTarget
+                          .closest("details")
+                          ?.removeAttribute("open");
+                        await flushAll();
+                        onLock();
+                      }}
+                    >
+                      Bloquear proyecto
+                    </button>
+                  </>
+                )}
               </div>
             </details>
           </div>
@@ -1154,7 +1504,11 @@ export const ProjectWorkspace = ({
 
       <div className="project-workspace__body">
         {leftOpen && !presentation && (
-          <aside className="canvas-sidebar" aria-label="Lienzos del proyecto">
+          <aside
+            id="canvas-sidebar"
+            className="canvas-sidebar"
+            aria-label="Lienzos del proyecto"
+          >
             <div className="workspace-panel__heading">
               <div>
                 <p className="workspace-eyebrow">PROYECTO</p>
@@ -1307,11 +1661,16 @@ export const ProjectWorkspace = ({
             onOpenReference={(target) =>
               setReferenceDialog({ mode: "preview", target })
             }
+            onBrowseReferences={() => setReferenceDialog({ mode: "browse" })}
           />
         </section>
 
         {rightOpen && !presentation && (
-          <aside className="views-sidebar" aria-label="Vistas guardadas">
+          <aside
+            id="views-sidebar"
+            className="views-sidebar"
+            aria-label="Vistas guardadas"
+          >
             <div className="workspace-panel__heading">
               <div>
                 <p className="workspace-eyebrow">RECORRIDO</p>
@@ -1668,6 +2027,18 @@ export const ProjectWorkspace = ({
             const nextProfiles = colorProfiles.slice();
             nextProfiles[slot] = null;
             await persistColorProfiles(nextProfiles);
+          }}
+          onResetFactory={async () => {
+            const confirmed = await askConfirm({
+              title: "Restaurar estilo original",
+              description:
+                "El lienzo volverá al fondo y a los valores predeterminados de Excalidraw. Tus dibujos y los seis perfiles guardados se conservarán.",
+              confirmLabel: "Restaurar estilo",
+            });
+            if (!confirmed) {
+              return;
+            }
+            await persistColorProfiles(colorProfiles, undefined, false, true);
           }}
         />
       )}

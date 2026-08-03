@@ -113,19 +113,16 @@ export const applyDarkModeFilter = (color: string, enable = true): string => {
   return result;
 };
 
-export const shouldPreserveCanvasColorInDarkMode = (color: string): boolean => {
-  const tc = tinycolor(color);
-  return tc.isValid() && tc.getAlpha() === 1 && tc.getBrightness() <= 48;
-};
-
-/** Keeps explicitly selected black and near-black canvases dark. */
+/**
+ * Theme mode retains Excalidraw's original dark-theme color mapping. Exact
+ * mode is used by Xcalidraw canvas profiles, where the selected color must be
+ * the color painted on screen.
+ */
 export const applyCanvasBackgroundColorFilter = (
   color: string,
   enable = true,
-): string =>
-  enable && shouldPreserveCanvasColorInDarkMode(color)
-    ? color
-    : applyDarkModeFilter(color, enable);
+  mode: "theme" | "exact" = "theme",
+): string => (mode === "exact" ? color : applyDarkModeFilter(color, enable));
 
 // ---------------------------------------------------------------------------
 // Color palette

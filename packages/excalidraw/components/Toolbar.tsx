@@ -8,6 +8,7 @@ import { t } from "../i18n";
 
 import { useEditorInterface, useStylesPanelMode } from "./App";
 import { HintViewer } from "./HintViewer";
+import { IconButton } from "./IconButton";
 import { Island } from "./Island";
 import { LockButton } from "./LockButton";
 import { PenModeButton } from "./PenModeButton";
@@ -274,6 +275,19 @@ export const Toolbar = ({
         <TextToolButton {...toolProps} />
         {UIOptions.tools?.image !== false && <ImageToolButton {...toolProps} />}
         <EraserToolButton {...toolProps} />
+
+        {app.props.toolbarActions?.map((action) => (
+          <IconButton
+            key={action.id}
+            type="icon"
+            icon={action.icon}
+            aria-label={action.label}
+            title={action.label}
+            data-testid={`toolbar-host-action-${action.id}`}
+            disabled={action.disabled}
+            onClick={action.onSelect}
+          />
+        ))}
 
         <div
           className="App-toolbar__divider"

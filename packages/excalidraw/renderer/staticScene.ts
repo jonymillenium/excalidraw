@@ -240,12 +240,23 @@ const _renderStaticScene = ({
   allElementsMap,
   visibleElements,
   scale,
-  appState,
-  renderConfig,
+  appState: sourceAppState,
+  renderConfig: sourceRenderConfig,
 }: StaticSceneRenderConfig) => {
   if (canvas === null) {
     return;
   }
+
+  // Color profiles are authored as literal display colors. Rendering them
+  // through the dark-theme palette would transform the background and element
+  // colors a second time. The surrounding application theme remains intact.
+  const exactCanvasColors = sourceAppState.viewBackgroundColorMode === "exact";
+  const appState = exactCanvasColors
+    ? { ...sourceAppState, theme: THEME.LIGHT }
+    : sourceAppState;
+  const renderConfig = exactCanvasColors
+    ? { ...sourceRenderConfig, theme: THEME.LIGHT }
+    : sourceRenderConfig;
 
   const { renderGrid = true, isExporting } = renderConfig;
 
@@ -262,6 +273,7 @@ const _renderStaticScene = ({
     theme: appState.theme,
     isExporting,
     viewBackgroundColor: appState.viewBackgroundColor,
+    viewBackgroundColorMode: appState.viewBackgroundColorMode,
   });
 
   // Apply zoom

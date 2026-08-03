@@ -41,6 +41,7 @@ export const bootstrapCanvas = ({
   theme,
   isExporting,
   viewBackgroundColor,
+  viewBackgroundColorMode = "theme",
 }: {
   canvas: HTMLCanvasElement;
   scale: number;
@@ -49,6 +50,7 @@ export const bootstrapCanvas = ({
   theme?: AppState["theme"];
   isExporting?: StaticCanvasRenderConfig["isExporting"];
   viewBackgroundColor?: StaticCanvasAppState["viewBackgroundColor"];
+  viewBackgroundColorMode?: StaticCanvasAppState["viewBackgroundColorMode"];
 }): CanvasRenderingContext2D => {
   const context = canvas.getContext("2d")!;
 
@@ -75,12 +77,10 @@ export const bootstrapCanvas = ({
       // stale color from a previous draw. Seed a sane default so corrupted
       // values fall back to white instead of painting garbage.
       context.fillStyle = COLOR_WHITE;
-      // A user-selected dark canvas must remain dark in dark UI mode.
-      // Applying Excalidraw's general dark-mode inversion here turns black and
-      // near-black colors into near-white, making the color picker appear broken.
       context.fillStyle = applyCanvasBackgroundColorFilter(
         viewBackgroundColor,
         theme === THEME.DARK,
+        viewBackgroundColorMode,
       );
       context.fillRect(0, 0, normalizedWidth, normalizedHeight);
       context.restore();

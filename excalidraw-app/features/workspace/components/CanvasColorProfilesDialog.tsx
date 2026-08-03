@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 
 import {
+  DEFAULT_CANVAS_BACKGROUND_COLOR,
+  DEFAULT_CANVAS_ELEMENT_COLOR,
   contrastRatio,
   deriveElementColor,
   normalizeCanvasColorProfiles,
@@ -28,8 +30,8 @@ type Draft = Pick<
 
 const emptyDraft = (slot: number): Draft => ({
   name: `Perfil ${slot + 1}`,
-  backgroundColor: "#ffffff",
-  elementColor: "#1b1b1f",
+  backgroundColor: DEFAULT_CANVAS_BACKGROUND_COLOR,
+  elementColor: DEFAULT_CANVAS_ELEMENT_COLOR,
   contrastLevel: "balanced",
 });
 
@@ -37,6 +39,7 @@ export const CanvasColorProfilesDialog = ({
   profiles,
   onSave,
   onDelete,
+  onResetFactory,
   onClose,
 }: {
   profiles: Array<CanvasColorProfile | null>;
@@ -46,6 +49,7 @@ export const CanvasColorProfilesDialog = ({
     applyToExistingElements: boolean,
   ) => Promise<void>;
   onDelete: (slot: number) => Promise<void>;
+  onResetFactory: () => Promise<void>;
   onClose: () => void;
 }) => {
   const normalizedProfiles = useMemo(
@@ -233,6 +237,21 @@ export const CanvasColorProfilesDialog = ({
             Aplicar el color también a los elementos que ya existen
           </label>
           <div className="workspace-dialog__actions">
+            <button
+              type="button"
+              className="workspace-button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await onResetFactory();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Restaurar apariencia original
+            </button>
             {normalizedProfiles[activeSlot] && (
               <button
                 type="button"

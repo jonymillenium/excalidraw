@@ -6,6 +6,9 @@ import {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
+export const DEFAULT_CANVAS_BACKGROUND_COLOR = "#ffffff";
+export const DEFAULT_CANVAS_ELEMENT_COLOR = "#1e1e1e";
+
 const normalizeHex = (color: string, fallback: string) =>
   HEX_COLOR.test(color) ? color.toLowerCase() : fallback;
 
@@ -20,8 +23,14 @@ export const normalizeCanvasColorProfiles = (
     return {
       ...profile,
       name: profile.name.trim() || `Perfil ${index + 1}`,
-      backgroundColor: normalizeHex(profile.backgroundColor, "#ffffff"),
-      elementColor: normalizeHex(profile.elementColor, "#1b1b1f"),
+      backgroundColor: normalizeHex(
+        profile.backgroundColor,
+        DEFAULT_CANVAS_BACKGROUND_COLOR,
+      ),
+      elementColor: normalizeHex(
+        profile.elementColor,
+        DEFAULT_CANVAS_ELEMENT_COLOR,
+      ),
     };
   });
 

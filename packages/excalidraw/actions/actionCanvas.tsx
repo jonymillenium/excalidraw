@@ -55,9 +55,14 @@ export const actionChangeViewBackgroundColor = register<Partial<AppState>>({
     );
   },
   perform: (_, appState, value) => {
+    const changesBackground = typeof value?.viewBackgroundColor === "string";
     return {
-      appState: { ...appState, ...value },
-      captureUpdate: !!value?.viewBackgroundColor
+      appState: {
+        ...appState,
+        ...value,
+        ...(changesBackground ? { viewBackgroundColorMode: "exact" } : {}),
+      },
+      captureUpdate: changesBackground
         ? CaptureUpdateAction.IMMEDIATELY
         : CaptureUpdateAction.EVENTUALLY,
     };
