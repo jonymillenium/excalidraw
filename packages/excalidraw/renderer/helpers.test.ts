@@ -1,4 +1,4 @@
-import { COLOR_WHITE } from "@excalidraw/common";
+import { COLOR_WHITE, THEME } from "@excalidraw/common";
 
 import { bootstrapCanvas } from "./helpers";
 
@@ -12,13 +12,17 @@ const setup = () => {
   return { canvas, context, clearRect, fillRect };
 };
 
-const run = (viewBackgroundColor: unknown) => {
+const run = (
+  viewBackgroundColor: unknown,
+  theme?: typeof THEME[keyof typeof THEME],
+) => {
   const { canvas, context, clearRect, fillRect } = setup();
   bootstrapCanvas({
     canvas,
     scale: 1,
     normalizedWidth: 200,
     normalizedHeight: 100,
+    theme,
     viewBackgroundColor: viewBackgroundColor as string,
   });
   return { context, clearRect, fillRect };
@@ -35,6 +39,11 @@ describe("bootstrapCanvas background painting", () => {
     const { clearRect, fillRect } = run("#fff");
     expect(clearRect).not.toHaveBeenCalled();
     expect(fillRect).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an explicitly black canvas black in dark UI mode", () => {
+    expect(run("#000000", THEME.DARK).context.fillStyle).toBe("#000000");
+    expect(run("#000", THEME.DARK).context.fillStyle).toBe("#000000");
   });
 
   it("clears for a hex color with alpha (#RGBA / #RRGGBBAA)", () => {

@@ -87,7 +87,7 @@ import {
   getDateTime,
   isShallowEqual,
   arrayToMap,
-  applyDarkModeFilter,
+  applyCanvasBackgroundColorFilter,
   AppEventBus,
   type EXPORT_IMAGE_TYPES,
   randomInteger,
@@ -2191,7 +2191,7 @@ class App extends React.Component<AppProps, AppState> {
               }
             }}
             style={{
-              background: applyDarkModeFilter(
+              background: applyCanvasBackgroundColorFilter(
                 this.state.viewBackgroundColor,
                 isDarkTheme,
               ),

@@ -113,6 +113,22 @@ export const applyDarkModeFilter = (color: string, enable = true): string => {
   return result;
 };
 
+export const isOpaqueBlack = (color: string): boolean => {
+  const tc = tinycolor(color);
+  if (!tc.isValid() || tc.getAlpha() !== 1) {
+    return false;
+  }
+  const { r, g, b } = tc.toRgb();
+  return r === 0 && g === 0 && b === 0;
+};
+
+/** Keeps an explicitly selected black canvas black in dark UI mode. */
+export const applyCanvasBackgroundColorFilter = (
+  color: string,
+  enable = true,
+): string =>
+  enable && isOpaqueBlack(color) ? color : applyDarkModeFilter(color, enable);
+
 // ---------------------------------------------------------------------------
 // Color palette
 // ---------------------------------------------------------------------------

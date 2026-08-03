@@ -64,6 +64,10 @@
     font-family: inherit;
     box-sizing: border-box;
 
+    &.preserve-black-canvas {
+      filter: none;
+    }
+
     &:hover:not(.active):not(.color-picker__button--large) {
       transform: scale(1.075);
     }

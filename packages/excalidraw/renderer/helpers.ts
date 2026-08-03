@@ -1,4 +1,8 @@
-import { COLOR_WHITE, THEME, applyDarkModeFilter } from "@excalidraw/common";
+import {
+  COLOR_WHITE,
+  THEME,
+  applyCanvasBackgroundColorFilter,
+} from "@excalidraw/common";
 
 import type { StaticCanvasRenderConfig } from "../scene/types";
 import type { AppState, StaticCanvasAppState } from "../types";
@@ -71,7 +75,10 @@ export const bootstrapCanvas = ({
       // stale color from a previous draw. Seed a sane default so corrupted
       // values fall back to white instead of painting garbage.
       context.fillStyle = COLOR_WHITE;
-      context.fillStyle = applyDarkModeFilter(
+      // A user-selected black canvas must remain black in dark UI mode.
+      // Applying Excalidraw's general dark-mode inversion here turns it into
+      // near-white, making the color picker appear broken.
+      context.fillStyle = applyCanvasBackgroundColorFilter(
         viewBackgroundColor,
         theme === THEME.DARK,
       );

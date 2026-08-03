@@ -1,8 +1,22 @@
 import {
+  applyCanvasBackgroundColorFilter,
   applyDarkModeFilter,
   COLOR_PALETTE,
   rgbToHex,
 } from "@excalidraw/common";
+
+describe("applyCanvasBackgroundColorFilter", () => {
+  it("preserves an explicitly black canvas in dark mode", () => {
+    expect(applyCanvasBackgroundColorFilter("#000000")).toBe("#000000");
+    expect(applyCanvasBackgroundColorFilter("#000")).toBe("#000");
+    expect(applyCanvasBackgroundColorFilter("black")).toBe("black");
+  });
+
+  it("retains normal dark-mode filtering for other backgrounds", () => {
+    expect(applyCanvasBackgroundColorFilter("#ffffff")).toBe("#121212");
+    expect(applyCanvasBackgroundColorFilter("#000000", false)).toBe("#000000");
+  });
+});
 
 describe("COLOR_PALETTE", () => {
   it("color palette doesn't regress", () => {

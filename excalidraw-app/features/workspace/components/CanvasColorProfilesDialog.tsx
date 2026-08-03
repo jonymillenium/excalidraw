@@ -77,6 +77,21 @@ export const CanvasColorProfilesDialog = ({
     }));
   };
 
+  const setBackgroundColor = (backgroundColor: string) => {
+    setDraft((current) => ({
+      ...current,
+      backgroundColor,
+      elementColor:
+        current.contrastLevel === "custom"
+          ? current.elementColor
+          : deriveElementColor(backgroundColor, current.contrastLevel),
+    }));
+  };
+
+  const setElementColor = (elementColor: string) => {
+    setDraft((current) => ({ ...current, elementColor }));
+  };
+
   return (
     <WorkspaceDialog
       title="Perfiles de color del lienzo"
@@ -152,20 +167,13 @@ export const CanvasColorProfilesDialog = ({
                 <input
                   type="color"
                   value={draft.backgroundColor}
-                  onChange={(event) => {
-                    const backgroundColor = event.target.value;
-                    setDraft((current) => ({
-                      ...current,
-                      backgroundColor,
-                      elementColor:
-                        current.contrastLevel === "custom"
-                          ? current.elementColor
-                          : deriveElementColor(
-                              backgroundColor,
-                              current.contrastLevel,
-                            ),
-                    }));
-                  }}
+                  aria-label="Color de fondo"
+                  onInput={(event) =>
+                    setBackgroundColor(event.currentTarget.value)
+                  }
+                  onChange={(event) =>
+                    setBackgroundColor(event.currentTarget.value)
+                  }
                 />
                 <code>{draft.backgroundColor}</code>
               </span>
@@ -177,11 +185,12 @@ export const CanvasColorProfilesDialog = ({
                   type="color"
                   value={draft.elementColor}
                   disabled={draft.contrastLevel !== "custom"}
+                  aria-label="Color de elementos"
+                  onInput={(event) =>
+                    setElementColor(event.currentTarget.value)
+                  }
                   onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      elementColor: event.target.value,
-                    }))
+                    setElementColor(event.currentTarget.value)
                   }
                 />
                 <code>{draft.elementColor}</code>

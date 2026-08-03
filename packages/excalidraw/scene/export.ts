@@ -12,7 +12,7 @@ import {
   distance,
   getFontString,
   toBrandedType,
-  applyDarkModeFilter,
+  applyCanvasBackgroundColorFilter,
 } from "@excalidraw/common";
 
 import { getCommonBounds, getElementAbsoluteCoords } from "@excalidraw/element";
@@ -463,7 +463,7 @@ export const exportToSvg = async (
     rect.setAttribute("height", `${height}`);
     rect.setAttribute(
       "fill",
-      applyDarkModeFilter(viewBackgroundColor, exportWithDarkMode),
+      applyCanvasBackgroundColorFilter(viewBackgroundColor, exportWithDarkMode),
     );
     svgRoot.appendChild(rect);
   }
