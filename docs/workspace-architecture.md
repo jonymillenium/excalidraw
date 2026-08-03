@@ -73,7 +73,7 @@ Individual canvases can be downloaded directly as PNG, JPG, SVG, or `.excalidraw
 
 `desktop/` is a minimal hardened Electron host. It serves the production SPA from an internal secure `xcalidraw://` protocol, keeps Node.js disabled in renderer pages, opens external links in the default browser, and supplies native macOS menus/window lifecycle. `electron-builder` packages the web build and icon as an Apple Silicon `.dmg`. Browser and desktop storage use different application origins, so `.xcalidraw-backup` is the supported bridge between installations or Macs.
 
-The packaging command embeds its Git commit and application version. The installed dashboard checks the configured public GitHub branch at launch, every 15 minutes, and on demand. It compares that branch with the embedded commit and displays the number of published commits available. The current unsigned build only notifies and links to the comparison; unattended installation requires Apple Developer ID signing/notarization, a GitHub Release channel, and a signed auto-update feed.
+The packaging command embeds its Git commit and application version. The installed dashboard checks the configured public GitHub branch only when the user selects **Comprobar actualizaciones**; it performs no background polling. It compares that branch with the embedded commit and displays the number of published commits available. The check only notifies and links to the comparison: it never downloads or installs an update automatically.
 
 ## Per-profile appearance
 

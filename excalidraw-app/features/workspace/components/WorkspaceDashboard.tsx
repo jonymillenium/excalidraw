@@ -121,10 +121,16 @@ export const WorkspaceDashboard = ({
               }
             >
               <span>
-                Versión {"version" in updateStatus ? updateStatus.version : ""}
+                {updateStatus.state === "idle"
+                  ? "Actualizaciones"
+                  : `Versión ${
+                      "version" in updateStatus ? updateStatus.version : ""
+                    }`}
               </span>
               <strong>
-                {updateStatus.state === "checking"
+                {updateStatus.state === "idle"
+                  ? "Comprobar actualizaciones"
+                  : updateStatus.state === "checking"
                   ? "Buscando…"
                   : updateStatus.state === "current"
                   ? "Al día"

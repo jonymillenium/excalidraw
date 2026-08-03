@@ -12,6 +12,7 @@ type GitHubCompareResponse = {
 };
 
 export type ApplicationUpdateStatus =
+  | { state: "idle"; version: string }
   | { state: "checking" }
   | { state: "development"; version: string }
   | { state: "current"; version: string; commit: string }

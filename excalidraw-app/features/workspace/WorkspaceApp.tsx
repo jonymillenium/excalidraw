@@ -107,7 +107,8 @@ const WorkspaceApp = () => {
   const [sessionVersion, setSessionVersion] = useState(0);
   const [profileSessionVersion, setProfileSessionVersion] = useState(0);
   const [updateStatus, setUpdateStatus] = useState<ApplicationUpdateStatus>({
-    state: "checking",
+    state: "idle",
+    version: import.meta.env.VITE_APP_VERSION ?? "dev",
   });
   const projectKeys = useRef(new Map<string, CryptoKey>());
   const unlockedProfileIds = useRef(new Set<string>());
@@ -137,15 +138,6 @@ const WorkspaceApp = () => {
     setUpdateStatus({ state: "checking" });
     setUpdateStatus(await checkForApplicationUpdate());
   }, []);
-
-  useEffect(() => {
-    void checkForUpdates();
-    const interval = window.setInterval(
-      () => void checkForUpdates(),
-      15 * 60 * 1000,
-    );
-    return () => window.clearInterval(interval);
-  }, [checkForUpdates]);
 
   const refreshProjects = useCallback(async () => {
     const next = await repository.listProjects();
