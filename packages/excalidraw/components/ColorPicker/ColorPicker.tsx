@@ -6,8 +6,8 @@ import {
   COLOR_OUTLINE_CONTRAST_THRESHOLD,
   COLOR_PALETTE,
   isColorDark,
-  isOpaqueBlack,
   isWritableElement,
+  shouldPreserveCanvasColorInDarkMode,
 } from "@excalidraw/common";
 
 import type { ColorTuple, ColorPaletteCustom } from "@excalidraw/common";
@@ -250,8 +250,10 @@ const ColorPickerTrigger = ({
           !color || !isColorDark(color, COLOR_OUTLINE_CONTRAST_THRESHOLD),
         "compact-sizing": isCompactMode,
         "mobile-border": isMobileMode,
-        "preserve-black-canvas":
-          type === "canvasBackground" && !!color && isOpaqueBlack(color),
+        "preserve-dark-canvas":
+          type === "canvasBackground" &&
+          !!color &&
+          shouldPreserveCanvasColorInDarkMode(color),
       })}
       aria-label={label}
       style={color ? { "--swatch-color": color } : undefined}

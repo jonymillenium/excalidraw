@@ -75,9 +75,9 @@ export const bootstrapCanvas = ({
       // stale color from a previous draw. Seed a sane default so corrupted
       // values fall back to white instead of painting garbage.
       context.fillStyle = COLOR_WHITE;
-      // A user-selected black canvas must remain black in dark UI mode.
-      // Applying Excalidraw's general dark-mode inversion here turns it into
-      // near-white, making the color picker appear broken.
+      // A user-selected dark canvas must remain dark in dark UI mode.
+      // Applying Excalidraw's general dark-mode inversion here turns black and
+      // near-black colors into near-white, making the color picker appear broken.
       context.fillStyle = applyCanvasBackgroundColorFilter(
         viewBackgroundColor,
         theme === THEME.DARK,

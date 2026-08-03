@@ -6,14 +6,17 @@ import {
 } from "@excalidraw/common";
 
 describe("applyCanvasBackgroundColorFilter", () => {
-  it("preserves an explicitly black canvas in dark mode", () => {
+  it("preserves explicitly dark canvas colors in dark mode", () => {
     expect(applyCanvasBackgroundColorFilter("#000000")).toBe("#000000");
     expect(applyCanvasBackgroundColorFilter("#000")).toBe("#000");
     expect(applyCanvasBackgroundColorFilter("black")).toBe("black");
+    expect(applyCanvasBackgroundColorFilter("#010101")).toBe("#010101");
+    expect(applyCanvasBackgroundColorFilter("#111111")).toBe("#111111");
   });
 
   it("retains normal dark-mode filtering for other backgrounds", () => {
     expect(applyCanvasBackgroundColorFilter("#ffffff")).toBe("#121212");
+    expect(applyCanvasBackgroundColorFilter("#ff0000")).toBe("#ff9090");
     expect(applyCanvasBackgroundColorFilter("#000000", false)).toBe("#000000");
   });
 });
