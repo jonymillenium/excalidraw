@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The workspace layer turns the Excalidraw application into a local-first project organizer without changing the editor engine. The implementation lives in `excalidraw-app/features/workspace`; `packages/excalidraw` remains the drawing, selection, rendering, history, file import/export, and viewport engine. The sole core edit is an English-locale loading guard documented in `IMPLEMENTATION_NOTES.md`; it reuses the already imported fallback and does not affect editor semantics.
+The workspace layer turns the Excalidraw application into a local-first project organizer without changing the editor engine. The implementation lives in `excalidraw-app/features/workspace`; `packages/excalidraw` remains the drawing, selection, rendering, history, file import/export, and viewport engine. The small core edits are an English-locale loading guard and exposing the already bundled Virgil font in the picker; both are documented in `IMPLEMENTATION_NOTES.md`.
 
 ## Runtime shape
 
@@ -20,7 +20,7 @@ WorkspaceApp
 
 ## Domain and persistence
 
-All persisted records carry `schemaVersion: 1`. IndexedDB database `excalidraw-workspace` contains:
+All persisted records carry `schemaVersion: 1`. The local profile registry stores only profile identity and the active-profile pointer in `localStorage`. Every profile owns a separate IndexedDB database (`excalidraw-workspace` for the original profile and `excalidraw-workspace-profile-<id>` for additional profiles), so projects and settings never leak across profile switches. Each database contains:
 
 - `workspace-projects`: public summaries, protection parameters, and an envelope for private project metadata.
 - `workspace-canvases`: canvas names/order plus a plain or encrypted scene envelope.
@@ -49,7 +49,7 @@ excalidrawAPI.setViewport({
 });
 ```
 
-The default duration is 400 ms. Presentation mode uses the persisted view order, disables editing, hides workspace panels, supports arrow keys, and exits with Escape. Navigating does not change elements or create an undo entry.
+Each view also stores a user-assigned name and optional description. The list exposes visible up/down controls and persists normalized order. The default transition duration is 400 ms. Presentation mode uses that order, disables scene editing, forces Excalidraw's laser tool, hides workspace panels, supports arrow keys, and exits with Escape. Navigating does not change elements or create an undo entry.
 
 ## Multi-tab behavior
 
@@ -63,7 +63,13 @@ On first launch the app checks standard Excalidraw local storage and the legacy 
 
 `.excalidraw-workspace` is versioned JSON. Plain projects remain readable. Protected projects export the stored ciphertext without decrypting it and retain the same password. A collision remaps project/canvas IDs; protected collisions ask for the backup password because AES-GCM additional authenticated data includes those IDs.
 
-Standard `.excalidraw` load/save/image export stays available through Excalidraw's main menu for individual canvases.
+Individual canvases can be downloaded directly as PNG, JPG, SVG, or `.excalidraw`. The standard Excalidraw load/save/image-export menu remains available as well.
+
+`.xcalidraw-backup` is the application-level portable backup. The export dialog can include the active profile or every local profile and can include or omit workspace settings. Each profile entry carries its identity plus complete project exports; therefore projects include every canvas, saved view, embedded file, and protected ciphertext. Restore is non-destructive: it combines imported content with existing profiles and remaps colliding project/canvas IDs.
+
+## macOS application
+
+`desktop/` is a minimal hardened Electron host. It serves the production SPA from an internal secure `xcalidraw://` protocol, keeps Node.js disabled in renderer pages, opens external links in the default browser, and supplies native macOS menus/window lifecycle. `electron-builder` packages the web build and icon as an Apple Silicon `.dmg`. Browser and desktop storage use different application origins, so `.xcalidraw-backup` is the supported bridge between installations or Macs.
 
 ## Future AI extension
 

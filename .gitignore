@@ -19,6 +19,7 @@ logs
 node_modules
 npm-debug.log*
 package-lock.json
+!desktop/package-lock.json
 yarn-debug.log*
 yarn-error.log*
 packages/excalidraw/types

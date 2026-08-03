@@ -10,7 +10,7 @@ The local environment supplied Node.js 24.14.0 rather than the preferred Node.js
 
 ## Architectural decisions
 
-1. The workspace itself is an application feature using public editor APIs. The only core change is a guarded `en` locale fast path in `i18n.ts`: the fallback is already statically imported, and avoiding a redundant dynamic import prevents Vite errors when this repository path contains `|`. It does not alter editor behavior or other locales.
+1. The workspace itself is an application feature using public editor APIs. Core edits are intentionally limited to a guarded `en` locale fast path and making the bundled Virgil handwritten font a visible, non-deprecated picker option.
 2. Canvas IDs remount Excalidraw, guaranteeing isolated in-session history.
 3. Viewports persist scene rectangles from `getVisibleSceneBounds`, making them resilient to a different window size.
 4. Scene/app-state envelopes and binary files are separate so autosave does not re-encrypt unchanged images.
@@ -18,6 +18,9 @@ The local environment supplied Node.js 24.14.0 rather than the preferred Node.js
 6. Protected exports preserve ciphertext. Protected import collisions require the password to rebind AAD to new IDs.
 7. The default setting reopens the last used project/canvas. Navigating back to `/` still provides the dashboard.
 8. BroadcastChannel provides an edit lease; secondary tabs are read-only.
+9. Supabase is not required for the PRD's local-first scope. Remote sync remains a separate future phase that would need identity, RLS, key handling, and conflict-resolution decisions.
+10. Local user profiles have isolated IndexedDB databases. A versioned `.xcalidraw-backup` can carry one profile or every profile, optionally including workspace settings.
+11. The macOS distribution is a hardened Electron wrapper around the same production build. It uses a secure custom protocol and no renderer-side Node.js access.
 
 ## Main implementation files
 
@@ -28,7 +31,11 @@ The local environment supplied Node.js 24.14.0 rather than the preferred Node.js
 - `excalidraw-app/features/workspace/hooks/useAutosaveCanvas.ts`
 - `excalidraw-app/features/workspace/domain/views.ts`
 - `excalidraw-app/features/workspace/services/projectTransfer.ts`
+- `excalidraw-app/features/workspace/services/canvasExport.ts`
+- `excalidraw-app/features/workspace/services/workspaceBackup.ts`
+- `excalidraw-app/features/workspace/services/profileRegistry.ts`
 - `excalidraw-app/features/workspace/services/legacyMigration.ts`
+- `desktop/main.mjs`
 
 ## Known MVP limitations
 

@@ -1,0 +1,51 @@
+{
+  "name": "xcalidraw-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "author": "Kurk",
+  "description": "Aplicación macOS local-first para Xcalidraw",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node build.mjs"
+  },
+  "devDependencies": {
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.kurk.xcalidraw",
+    "productName": "Xcalidraw",
+    "artifactName": "Xcalidraw-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.mjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../excalidraw-app/build",
+        "to": "app"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Xcalidraw",
+      "sign": false
+    }
+  }
+}
