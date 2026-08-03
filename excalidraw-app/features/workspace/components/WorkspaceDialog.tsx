@@ -14,6 +14,8 @@ export const WorkspaceDialog = ({
   size?: "default" | "wide";
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -21,7 +23,7 @@ export const WorkspaceDialog = ({
     dialog?.querySelector<HTMLElement>("input, button, textarea")?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialog) {
@@ -50,7 +52,7 @@ export const WorkspaceDialog = ({
       document.removeEventListener("keydown", handleKeyDown);
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="workspace-dialog-backdrop" role="presentation">
