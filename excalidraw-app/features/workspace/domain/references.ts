@@ -7,6 +7,12 @@ export type WorkspaceReferenceTarget = {
   viewId?: string;
 };
 
+type WorkspaceReferenceElement = {
+  id: string;
+  isDeleted?: boolean;
+  link?: string | null;
+};
+
 export const createWorkspaceReferenceLink = (
   target: WorkspaceReferenceTarget,
 ) => {
@@ -52,4 +58,39 @@ export const parseWorkspaceReferenceLink = (
   } catch {
     return null;
   }
+};
+
+const targetsMatch = (
+  first: WorkspaceReferenceTarget,
+  second: WorkspaceReferenceTarget,
+) =>
+  first.kind === second.kind &&
+  first.projectId === second.projectId &&
+  first.canvasId === second.canvasId &&
+  first.viewId === second.viewId;
+
+/**
+ * Resolves Quick Look only when every selected element belongs to the same
+ * workspace shortcut. Reference cards are groups whose elements share a link.
+ */
+export const getSelectedWorkspaceReferenceTarget = (
+  elements: readonly WorkspaceReferenceElement[],
+  selectedElementIds: Readonly<Record<string, boolean | undefined>>,
+): WorkspaceReferenceTarget | null => {
+  let selectedCount = 0;
+  let selectedTarget: WorkspaceReferenceTarget | null = null;
+
+  for (const element of elements) {
+    if (element.isDeleted || !selectedElementIds[element.id]) {
+      continue;
+    }
+    selectedCount += 1;
+    const target = parseWorkspaceReferenceLink(element.link);
+    if (!target || (selectedTarget && !targetsMatch(selectedTarget, target))) {
+      return null;
+    }
+    selectedTarget = target;
+  }
+
+  return selectedCount > 0 ? selectedTarget : null;
 };

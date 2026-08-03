@@ -46,6 +46,7 @@ import { getInitialEditorAppState } from "../domain/editorFeatures";
 import { normalizeCanvasColorProfiles } from "../domain/canvasColors";
 import {
   createWorkspaceReferenceLink,
+  getSelectedWorkspaceReferenceTarget,
   parseWorkspaceReferenceLink,
   type WorkspaceReferenceTarget,
 } from "../domain/references";
@@ -172,6 +173,58 @@ const EditorCanvas = ({
     );
     setSketchElementIds([]);
   }, [loadedCanvas.id, loadedCanvas.payload.elements]);
+
+  useEffect(() => {
+    if (!editorApi || presentation) {
+      return;
+    }
+
+    const handleQuickLook = (event: KeyboardEvent) => {
+      if (
+        (event.code !== "Space" && event.key !== " ") ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey ||
+        document.querySelector(".workspace-dialog[aria-modal='true']")
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          "input, textarea, select, button, [contenteditable='true'], [data-type='wysiwyg'], .cm-editor",
+        )
+      ) {
+        return;
+      }
+
+      const appState = editorApi.getAppState();
+      if (appState.editingTextElement) {
+        return;
+      }
+      const reference = getSelectedWorkspaceReferenceTarget(
+        editorApi.getSceneElementsIncludingDeleted(),
+        appState.selectedElementIds,
+      );
+      if (!reference) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onOpenReference(reference);
+    };
+
+    window.addEventListener("keydown", handleQuickLook, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handleQuickLook, {
+        capture: true,
+      });
+  }, [editorApi, onOpenReference, presentation]);
 
   const handleSceneChange = useCallback(
     (

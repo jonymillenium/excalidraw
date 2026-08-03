@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createWorkspaceReferenceLink,
+  getSelectedWorkspaceReferenceTarget,
   parseWorkspaceReferenceLink,
 } from "../domain/references";
 
@@ -41,5 +42,84 @@ describe("workspace references", () => {
         "xcalidraw://workspace?kind=view&project=project-1&canvas=canvas-1",
       ),
     ).toBeNull();
+  });
+
+  it("resolves a grouped shortcut when all selected elements share a target", () => {
+    const target = {
+      kind: "view" as const,
+      projectId: "project-1",
+      canvasId: "canvas-1",
+      viewId: "view-1",
+    };
+    const link = createWorkspaceReferenceLink(target);
+
+    expect(
+      getSelectedWorkspaceReferenceTarget(
+        [
+          { id: "card", link },
+          { id: "thumbnail", link },
+          { id: "title", link },
+        ],
+        { card: true, thumbnail: true, title: true },
+      ),
+    ).toEqual(target);
+  });
+
+  it("does not resolve a mixed selection", () => {
+    const link = createWorkspaceReferenceLink({
+      kind: "canvas",
+      projectId: "project-1",
+      canvasId: "canvas-1",
+    });
+
+    expect(
+      getSelectedWorkspaceReferenceTarget(
+        [{ id: "card", link }, { id: "shape" }],
+        { card: true, shape: true },
+      ),
+    ).toBeNull();
+  });
+
+  it("does not resolve two different shortcuts", () => {
+    expect(
+      getSelectedWorkspaceReferenceTarget(
+        [
+          {
+            id: "first",
+            link: createWorkspaceReferenceLink({
+              kind: "project",
+              projectId: "project-1",
+            }),
+          },
+          {
+            id: "second",
+            link: createWorkspaceReferenceLink({
+              kind: "project",
+              projectId: "project-2",
+            }),
+          },
+        ],
+        { first: true, second: true },
+      ),
+    ).toBeNull();
+  });
+
+  it("ignores unselected and deleted elements", () => {
+    const target = {
+      kind: "project" as const,
+      projectId: "project-1",
+    };
+    const link = createWorkspaceReferenceLink(target);
+
+    expect(
+      getSelectedWorkspaceReferenceTarget(
+        [
+          { id: "selected", link },
+          { id: "unselected" },
+          { id: "deleted", isDeleted: true },
+        ],
+        { selected: true, deleted: true },
+      ),
+    ).toEqual(target);
   });
 });
