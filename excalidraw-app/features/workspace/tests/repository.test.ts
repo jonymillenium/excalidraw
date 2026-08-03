@@ -1,6 +1,24 @@
 import { IndexedDBWorkspaceRepository } from "../storage/IndexedDBWorkspaceRepository";
 
 describe("IndexedDBWorkspaceRepository", () => {
+  it("releases open connections when the profile database is deleted", async () => {
+    const databaseName = `workspace-versionchange-${globalThis.crypto.randomUUID()}`;
+    const firstWindow = new IndexedDBWorkspaceRepository(databaseName);
+    const secondWindow = new IndexedDBWorkspaceRepository(databaseName);
+
+    await Promise.all([firstWindow.getSettings(), secondWindow.getSettings()]);
+
+    await expect(
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(databaseName);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () =>
+          reject(new Error("La otra ventana no liberó IndexedDB."));
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("creates, persists, renames, duplicates, orders and deletes canvases", async () => {
     const repository = new IndexedDBWorkspaceRepository();
     const suffix = globalThis.crypto.randomUUID();

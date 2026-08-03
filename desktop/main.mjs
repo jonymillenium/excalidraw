@@ -46,6 +46,13 @@ const createApplicationMenu = () => {
       label: app.name,
       submenu: [
         { role: "about" },
+        {
+          label: "Ver versión publicada en GitHub…",
+          click: () =>
+            shell.openExternal(
+              "https://github.com/jonymillenium/excalidraw/commits/feature/workspaces-projects-views-security",
+            ),
+        },
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },

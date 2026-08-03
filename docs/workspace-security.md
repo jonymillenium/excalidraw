@@ -31,6 +31,12 @@ Passwords are only held in component/form variables long enough to derive a key.
 
 There is no password recovery. The UI warns about this before creating protection.
 
+## Profile access lock
+
+A profile can also require a password when the application starts, when the user returns to that profile, or when **Bloquear perfil ahora** is selected. Its verifier uses the same PBKDF2/SHA-256 and AES-GCM construction as project verification, with an independent random salt; the password and derived key are never persisted.
+
+This is an application access lock, not a replacement for project encryption. Profile metadata, including its appearance and verifier, lives in the local profile registry. Projects that must be confidential at rest should additionally enable project protection, which encrypts their canvases, files, saved views, and private metadata in IndexedDB.
+
 ## Password changes
 
 Changing a password verifies the current password, decrypts every project record in memory, creates a new salt and key, generates fresh IVs, and writes the fully re-encrypted project in a single IndexedDB transaction. Removing a password follows the same read/validate/transaction pattern and only clears protection parameters as part of the successful write.
@@ -38,6 +44,8 @@ Changing a password verifies the current password, decrypts every project record
 ## Backups
 
 Protected backups contain the encrypted envelopes already stored locally; exporting does not create a plaintext copy. The backup retains its protection parameters and password. Unprotected backups are readable JSON by design.
+
+Full-profile backups also retain the profile access verifier and appearance. Restoring a protected profile locks it immediately and keeps the same profile password.
 
 ## Threat boundaries
 

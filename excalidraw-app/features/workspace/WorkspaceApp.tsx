@@ -4,9 +4,15 @@ import polyfill from "@excalidraw/excalidraw/polyfill";
 
 import "../../index.scss";
 
+import { AppearanceDialog } from "./components/AppearanceDialog";
 import { BackupDialog } from "./components/BackupDialog";
 import { CreateProjectDialog } from "./components/CreateProjectDialog";
 import { ProfileDialog } from "./components/ProfileDialog";
+import {
+  ProfilePasswordDialog,
+  type ProfilePasswordMode,
+} from "./components/ProfilePasswordDialog";
+import { ProfileUnlockScreen } from "./components/ProfileUnlockScreen";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { UnlockProjectDialog } from "./components/UnlockProjectDialog";
 import {
@@ -15,6 +21,7 @@ import {
 } from "./components/WorkspaceDashboard";
 
 import { migrateLegacyScene } from "./services/legacyMigration";
+import { createProfileProtection, unlockProfile } from "./crypto/profileCrypto";
 import {
   createWorkspaceProfile,
   getActiveProfileId,
@@ -23,12 +30,18 @@ import {
   removeWorkspaceProfile,
   renameWorkspaceProfile,
   setActiveProfileId,
+  updateWorkspaceProfileAppearance,
+  updateWorkspaceProfileProtection,
 } from "./services/profileRegistry";
 import { downloadProject, readWorkspaceFile } from "./services/projectTransfer";
 import {
   downloadWorkspaceBackup,
   readWorkspaceBackup,
 } from "./services/workspaceBackup";
+import {
+  checkForApplicationUpdate,
+  type ApplicationUpdateStatus,
+} from "./services/updateChecker";
 import {
   deleteWorkspaceProfileDatabase,
   getWorkspaceRepository,
@@ -63,6 +76,14 @@ const parseRoute = (): Route => {
 
 const initializationPromises = new Map<string, Promise<boolean>>();
 
+const getAccentContrast = (color: string) => {
+  const [red, green, blue] = [1, 3, 5].map((offset) =>
+    Number.parseInt(color.slice(offset, offset + 2), 16),
+  );
+  const luminance = (red * 299 + green * 587 + blue * 114) / 255000;
+  return luminance > 0.58 ? "#14130f" : "#ffffff";
+};
+
 const WorkspaceApp = () => {
   const [profiles, setProfiles] = useState(getWorkspaceProfiles);
   const [activeProfileId, setActiveProfile] = useState(getActiveProfileId);
@@ -74,14 +95,57 @@ const WorkspaceApp = () => {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [profileDialog, setProfileDialog] = useState<
     "create" | "rename" | null
   >(null);
+  const [profilePasswordMode, setProfilePasswordMode] =
+    useState<ProfilePasswordMode | null>(null);
   const [unlockTarget, setUnlockTarget] = useState<ProjectSummary | null>(null);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const [sessionVersion, setSessionVersion] = useState(0);
+  const [profileSessionVersion, setProfileSessionVersion] = useState(0);
+  const [updateStatus, setUpdateStatus] = useState<ApplicationUpdateStatus>({
+    state: "checking",
+  });
   const projectKeys = useRef(new Map<string, CryptoKey>());
+  const unlockedProfileIds = useRef(new Set<string>());
+  const activeProfileLocked =
+    activeProfile.protection.enabled &&
+    !unlockedProfileIds.current.has(activeProfile.id);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const { accentColor, accentStyle, accentIntensity } =
+      activeProfile.appearance;
+    root.style.setProperty("--workspace-primary", accentColor);
+    root.style.setProperty(
+      "--workspace-primary-hover",
+      `color-mix(in srgb, ${accentColor} 84%, white)`,
+    );
+    root.style.setProperty(
+      "--workspace-primary-contrast",
+      getAccentContrast(accentColor),
+    );
+    document.body.classList.add("workspace-themed");
+    document.body.dataset.workspaceAccentStyle = accentStyle;
+    document.body.dataset.workspaceAccentIntensity = accentIntensity;
+  }, [activeProfile.appearance]);
+
+  const checkForUpdates = useCallback(async () => {
+    setUpdateStatus({ state: "checking" });
+    setUpdateStatus(await checkForApplicationUpdate());
+  }, []);
+
+  useEffect(() => {
+    void checkForUpdates();
+    const interval = window.setInterval(
+      () => void checkForUpdates(),
+      15 * 60 * 1000,
+    );
+    return () => window.clearInterval(interval);
+  }, [checkForUpdates]);
 
   const refreshProjects = useCallback(async () => {
     const next = await repository.listProjects();
@@ -118,9 +182,17 @@ const WorkspaceApp = () => {
   }, []);
 
   useEffect(() => {
+    void profileSessionVersion;
     let active = true;
     setLoading(true);
     setProjects([]);
+    if (activeProfileLocked) {
+      setLoading(false);
+      navigate({ name: "dashboard" }, true);
+      return () => {
+        active = false;
+      };
+    }
     let initializationPromise = initializationPromises.get(activeProfile.id);
     if (!initializationPromise) {
       initializationPromise =
@@ -174,7 +246,13 @@ const WorkspaceApp = () => {
     return () => {
       active = false;
     };
-  }, [activeProfile.id, navigate, repository]);
+  }, [
+    activeProfile.id,
+    activeProfileLocked,
+    navigate,
+    profileSessionVersion,
+    repository,
+  ]);
 
   useEffect(() => {
     void sessionVersion;
@@ -385,9 +463,12 @@ const WorkspaceApp = () => {
 
   const unlockedProjectIds = new Set(projectKeys.current.keys());
 
-  const switchProfile = (profileId: string) => {
+  const switchProfile = (profileId: string, keepUnlocked = false) => {
     if (profileId === activeProfile.id) {
       return;
+    }
+    if (!keepUnlocked) {
+      unlockedProfileIds.current.delete(profileId);
     }
     projectKeys.current.clear();
     setSessionVersion((version) => version + 1);
@@ -404,6 +485,28 @@ const WorkspaceApp = () => {
         <div className="workspace-loader" />
         <p>Preparando tu workspace local…</p>
       </main>
+    );
+  }
+
+  if (activeProfileLocked) {
+    return (
+      <ProfileUnlockScreen
+        profile={activeProfile}
+        profiles={profiles}
+        onProfileChange={switchProfile}
+        onUnlock={async (password) => {
+          if (!activeProfile.protection.enabled) {
+            return;
+          }
+          await unlockProfile(
+            activeProfile.id,
+            activeProfile.protection,
+            password,
+          );
+          unlockedProfileIds.current.add(activeProfile.id);
+          setProfileSessionVersion((version) => version + 1);
+        }}
+      />
     );
   }
 
@@ -441,6 +544,8 @@ const WorkspaceApp = () => {
           projects={projects}
           profiles={profiles}
           activeProfileId={activeProfile.id}
+          activeProfileProtected={activeProfile.protection.enabled}
+          updateStatus={updateStatus}
           unlockedProjectIds={unlockedProjectIds}
           message={error ?? message}
           onCreate={() => setCreateOpen(true)}
@@ -480,6 +585,9 @@ const WorkspaceApp = () => {
                   const targetProfile = importWorkspaceProfile(
                     profileBackup.profile,
                   );
+                  if (targetProfile.protection.enabled) {
+                    unlockedProfileIds.current.delete(targetProfile.id);
+                  }
                   const targetRepository = getWorkspaceRepository(
                     targetProfile.id,
                   );
@@ -510,6 +618,7 @@ const WorkspaceApp = () => {
                   }
                 }
                 setProfiles(getWorkspaceProfiles());
+                setProfileSessionVersion((version) => version + 1);
                 await refreshProjects();
                 setMessage(
                   `Backup restaurado: ${importedProjects} ${
@@ -531,6 +640,15 @@ const WorkspaceApp = () => {
           onProfileChange={switchProfile}
           onCreateProfile={() => setProfileDialog("create")}
           onRenameProfile={() => setProfileDialog("rename")}
+          onAppearance={() => setAppearanceOpen(true)}
+          onProfilePasswordAction={setProfilePasswordMode}
+          onLockProfile={() => {
+            unlockedProfileIds.current.delete(activeProfile.id);
+            projectKeys.current.clear();
+            navigate({ name: "dashboard" }, true);
+            setProfileSessionVersion((version) => version + 1);
+          }}
+          onCheckForUpdates={() => void checkForUpdates()}
           onDeleteProfile={() => {
             void (async () => {
               if (
@@ -550,6 +668,7 @@ const WorkspaceApp = () => {
                 }
                 navigate({ name: "dashboard" }, true);
                 projectKeys.current.clear();
+                unlockedProfileIds.current.delete(activeProfile.id);
                 await deleteWorkspaceProfileDatabase(activeProfile.id);
                 setProfiles(removeWorkspaceProfile(activeProfile.id));
                 setActiveProfileId(nextProfile.id);
@@ -596,6 +715,20 @@ const WorkspaceApp = () => {
         />
       )}
 
+      {appearanceOpen && (
+        <AppearanceDialog
+          initialAppearance={activeProfile.appearance}
+          onCancel={() => setAppearanceOpen(false)}
+          onSave={async (appearance) => {
+            setProfiles(
+              updateWorkspaceProfileAppearance(activeProfile.id, appearance),
+            );
+            setAppearanceOpen(false);
+            setMessage("Apariencia actualizada.");
+          }}
+        />
+      )}
+
       {profileDialog && (
         <ProfileDialog
           mode={profileDialog}
@@ -603,16 +736,60 @@ const WorkspaceApp = () => {
             profileDialog === "rename" ? activeProfile.name : undefined
           }
           onCancel={() => setProfileDialog(null)}
-          onSubmit={async (name) => {
+          onSubmit={async ({ name, password }) => {
             if (profileDialog === "create") {
-              const profile = createWorkspaceProfile(name);
+              const profile = await createWorkspaceProfile(name, password);
+              if (profile.protection.enabled) {
+                unlockedProfileIds.current.add(profile.id);
+              }
               setProfiles(getWorkspaceProfiles());
               setProfileDialog(null);
-              switchProfile(profile.id);
+              switchProfile(profile.id, true);
             } else {
               setProfiles(renameWorkspaceProfile(activeProfile.id, name));
               setProfileDialog(null);
             }
+          }}
+        />
+      )}
+
+      {profilePasswordMode && (
+        <ProfilePasswordDialog
+          mode={profilePasswordMode}
+          profileName={activeProfile.name}
+          onCancel={() => setProfilePasswordMode(null)}
+          onSubmit={async ({ currentPassword, newPassword }) => {
+            if (profilePasswordMode !== "add") {
+              if (!activeProfile.protection.enabled || !currentPassword) {
+                throw new Error("La contraseña actual es obligatoria.");
+              }
+              await unlockProfile(
+                activeProfile.id,
+                activeProfile.protection,
+                currentPassword,
+              );
+            }
+            const protection =
+              profilePasswordMode === "remove"
+                ? ({ enabled: false } as const)
+                : await createProfileProtection(
+                    activeProfile.id,
+                    newPassword ?? "",
+                  );
+            setProfiles(
+              updateWorkspaceProfileProtection(activeProfile.id, protection),
+            );
+            if (protection.enabled) {
+              unlockedProfileIds.current.add(activeProfile.id);
+            } else {
+              unlockedProfileIds.current.delete(activeProfile.id);
+            }
+            setProfilePasswordMode(null);
+            setMessage(
+              profilePasswordMode === "remove"
+                ? "Se quitó la contraseña del perfil."
+                : "La contraseña del perfil se actualizó.",
+            );
           }}
         />
       )}

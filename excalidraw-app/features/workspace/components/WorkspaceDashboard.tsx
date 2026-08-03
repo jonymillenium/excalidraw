@@ -1,6 +1,8 @@
 import { useRef } from "react";
 
+import type { ProfilePasswordMode } from "./ProfilePasswordDialog";
 import type { ProjectSummary, WorkspaceProfile } from "../domain/types";
+import type { ApplicationUpdateStatus } from "../services/updateChecker";
 
 export type ProjectAction =
   | "open"
@@ -25,6 +27,8 @@ export const WorkspaceDashboard = ({
   projects,
   profiles,
   activeProfileId,
+  activeProfileProtected,
+  updateStatus,
   unlockedProjectIds,
   message,
   onCreate,
@@ -35,11 +39,17 @@ export const WorkspaceDashboard = ({
   onCreateProfile,
   onRenameProfile,
   onDeleteProfile,
+  onAppearance,
+  onProfilePasswordAction,
+  onLockProfile,
+  onCheckForUpdates,
   onProjectAction,
 }: {
   projects: ProjectSummary[];
   profiles: WorkspaceProfile[];
   activeProfileId: string;
+  activeProfileProtected: boolean;
+  updateStatus: ApplicationUpdateStatus;
   unlockedProjectIds: Set<string>;
   message?: string;
   onCreate: () => void;
@@ -50,6 +60,10 @@ export const WorkspaceDashboard = ({
   onCreateProfile: () => void;
   onRenameProfile: () => void;
   onDeleteProfile: () => void;
+  onAppearance: () => void;
+  onProfilePasswordAction: (mode: ProfilePasswordMode) => void;
+  onLockProfile: () => void;
+  onCheckForUpdates: () => void;
   onProjectAction: (project: ProjectSummary, action: ProjectAction) => void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +71,11 @@ export const WorkspaceDashboard = ({
 
   return (
     <main className="workspace-dashboard">
+      <div className="workspace-accent-lines" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
       <header className="workspace-dashboard__header">
         <div>
           <div className="workspace-brand-mark" aria-hidden="true">
@@ -72,6 +91,49 @@ export const WorkspaceDashboard = ({
           </div>
         </div>
         <div className="workspace-dashboard__header-actions">
+          {updateStatus.state === "available" ? (
+            <a
+              className="workspace-update workspace-update--available"
+              href={updateStatus.url}
+              target="_blank"
+              rel="noreferrer"
+              title="Ver los cambios publicados en GitHub"
+            >
+              <span>Nueva versión</span>
+              <strong>
+                {updateStatus.commits === null
+                  ? "Cambios publicados"
+                  : `${updateStatus.commits} ${
+                      updateStatus.commits === 1 ? "cambio" : "cambios"
+                    }`}
+              </strong>
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="workspace-update"
+              onClick={onCheckForUpdates}
+              disabled={updateStatus.state === "checking"}
+              title={
+                updateStatus.state === "error"
+                  ? updateStatus.message
+                  : "Consultar la versión publicada en GitHub"
+              }
+            >
+              <span>
+                Versión {"version" in updateStatus ? updateStatus.version : ""}
+              </span>
+              <strong>
+                {updateStatus.state === "checking"
+                  ? "Buscando…"
+                  : updateStatus.state === "current"
+                  ? "Al día"
+                  : updateStatus.state === "error"
+                  ? "Reintentar"
+                  : "Desarrollo"}
+              </strong>
+            </button>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -138,18 +200,55 @@ export const WorkspaceDashboard = ({
           >
             {profiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
+                {profile.protection.enabled ? "🔒 " : ""}
                 {profile.name}
               </option>
             ))}
           </select>
         </label>
         <div>
+          <button className="workspace-button" onClick={onAppearance}>
+            Apariencia
+          </button>
           <button className="workspace-button" onClick={onCreateProfile}>
             Nuevo perfil
           </button>
           <button className="workspace-button" onClick={onRenameProfile}>
             Renombrar
           </button>
+          <details className="workspace-menu workspace-menu--profile">
+            <summary className="workspace-button">
+              {activeProfileProtected ? "Seguridad · Activa" : "Seguridad"}
+            </summary>
+            <div className="workspace-menu__items">
+              {activeProfileProtected ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onProfilePasswordAction("change")}
+                  >
+                    Cambiar contraseña
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onProfilePasswordAction("remove")}
+                  >
+                    Quitar contraseña
+                  </button>
+                  <button type="button" onClick={onLockProfile}>
+                    Bloquear perfil ahora
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onProfilePasswordAction("add")}
+                >
+                  Agregar contraseña
+                </button>
+              )}
+            </div>
+          </details>
           <button
             className="workspace-button"
             onClick={onDeleteProfile}

@@ -16,11 +16,11 @@ WorkspaceApp
     └── ViewsSidebar / presentation controls
 ```
 
-`WorkspaceApp` resolves `/project/:projectId/canvas/:canvasId`, owns only session-level project keys, and coordinates dashboard/project navigation. A canvas switch flushes the pending save before changing the URL. The Excalidraw instance is remounted for every canvas ID, which isolates undo/redo history and prevents scene contamination.
+`WorkspaceApp` resolves `/project/:projectId/canvas/:canvasId`, owns session-level project keys and unlocked-profile state, and coordinates dashboard/project navigation. A canvas switch flushes the pending save before changing the URL. The Excalidraw instance is remounted for every canvas ID, which isolates undo/redo history and prevents scene contamination.
 
 ## Domain and persistence
 
-All persisted records carry `schemaVersion: 1`. The local profile registry stores only profile identity and the active-profile pointer in `localStorage`. Every profile owns a separate IndexedDB database (`excalidraw-workspace` for the original profile and `excalidraw-workspace-profile-<id>` for additional profiles), so projects and settings never leak across profile switches. Each database contains:
+All persisted records carry `schemaVersion: 1`. The local profile registry stores identity, appearance, the optional profile-access verifier, and the active-profile pointer in `localStorage`. Every profile owns a separate IndexedDB database (`excalidraw-workspace` for the original profile and `excalidraw-workspace-profile-<id>` for additional profiles), so projects and settings never leak across profile switches. Each database contains:
 
 - `workspace-projects`: public summaries, protection parameters, and an envelope for private project metadata.
 - `workspace-canvases`: canvas names/order plus a plain or encrypted scene envelope.
@@ -55,6 +55,8 @@ Each view also stores a user-assigned name and optional description. The list ex
 
 Each active canvas obtains a best-effort `BroadcastChannel` lease. A second tab that detects an existing owner opens the canvas in read-only mode and does not autosave. This is edit exclusion, not collaboration.
 
+IndexedDB connections close automatically on `versionchange`, allowing a profile database to be removed cleanly even if another application window had opened it.
+
 ## Legacy migration
 
 On first launch the app checks standard Excalidraw local storage and the legacy file database. If a scene exists, it creates `Proyecto importado` / `Lienzo original`, copies scene state and referenced files, reads the new record back, and only then marks migration complete. Original keys and files are never deleted. The completion setting makes the migration idempotent.
@@ -70,6 +72,12 @@ Individual canvases can be downloaded directly as PNG, JPG, SVG, or `.excalidraw
 ## macOS application
 
 `desktop/` is a minimal hardened Electron host. It serves the production SPA from an internal secure `xcalidraw://` protocol, keeps Node.js disabled in renderer pages, opens external links in the default browser, and supplies native macOS menus/window lifecycle. `electron-builder` packages the web build and icon as an Apple Silicon `.dmg`. Browser and desktop storage use different application origins, so `.xcalidraw-backup` is the supported bridge between installations or Macs.
+
+The packaging command embeds its Git commit and application version. The installed dashboard checks the configured public GitHub branch at launch, every 15 minutes, and on demand. It compares that branch with the embedded commit and displays the number of published commits available. The current unsigned build only notifies and links to the comparison; unattended installation requires Apple Developer ID signing/notarization, a GitHub Release channel, and a signed auto-update feed.
+
+## Per-profile appearance
+
+Each profile stores an accent color, line style, and intensity. These values become CSS custom properties and body data attributes before the dashboard is rendered, so dashboard highlights, buttons, window contour, and automotive background lines stay consistent across sessions and backups without coupling the Excalidraw editor engine to a particular theme.
 
 ## Future AI extension
 

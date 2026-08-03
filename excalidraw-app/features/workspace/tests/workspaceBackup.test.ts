@@ -22,6 +22,12 @@ const backup: WorkspaceBackup = {
         name: "Personal",
         createdAt: 1,
         updatedAt: 1,
+        protection: { enabled: false },
+        appearance: {
+          accentColor: "#ffd400",
+          accentStyle: "contour",
+          accentIntensity: "vivid",
+        },
       },
       settings: {
         reopenLastCanvas: true,

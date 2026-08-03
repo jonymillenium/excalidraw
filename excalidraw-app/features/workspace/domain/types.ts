@@ -60,6 +60,33 @@ export type ProjectProtection =
       verifier: EncryptedEnvelope;
     };
 
+export type ProfileProtection =
+  | { enabled: false }
+  | {
+      enabled: true;
+      version: 1;
+      kdf: "PBKDF2";
+      hash: "SHA-256";
+      iterations: number;
+      salt: string;
+      verifier: EncryptedEnvelope;
+    };
+
+export type WorkspaceAccentStyle = "racing" | "contour" | "pinstripe";
+export type WorkspaceAccentIntensity = "subtle" | "vivid";
+
+export type WorkspaceAppearance = {
+  accentColor: string;
+  accentStyle: WorkspaceAccentStyle;
+  accentIntensity: WorkspaceAccentIntensity;
+};
+
+export const DEFAULT_WORKSPACE_APPEARANCE: WorkspaceAppearance = {
+  accentColor: "#ffd400",
+  accentStyle: "contour",
+  accentIntensity: "vivid",
+};
+
 export type ProjectPrivateData = {
   description?: string;
 };
@@ -141,6 +168,8 @@ export type WorkspaceProfile = {
   name: string;
   createdAt: number;
   updatedAt: number;
+  protection: ProfileProtection;
+  appearance: WorkspaceAppearance;
 };
 
 export type WorkspaceExport = {

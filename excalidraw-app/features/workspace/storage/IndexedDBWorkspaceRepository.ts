@@ -104,7 +104,11 @@ const openDatabase = (databaseName: string) =>
         db.createObjectStore(STORES.thumbnails, { keyPath: "id" });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const database = request.result;
+      database.onversionchange = () => database.close();
+      resolve(database);
+    };
   });
 
 const createId = () =>
