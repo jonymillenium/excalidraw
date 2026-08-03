@@ -35,7 +35,7 @@ export const WorkspaceDashboard = ({
   onImport,
   onImportBackup,
   onExportBackup,
-  onProfileChange,
+  onShowProfileChooser,
   onCreateProfile,
   onRenameProfile,
   onDeleteProfile,
@@ -43,6 +43,7 @@ export const WorkspaceDashboard = ({
   onProfilePasswordAction,
   onLockProfile,
   onCheckForUpdates,
+  onDownloadUpdate,
   onProjectAction,
 }: {
   projects: ProjectSummary[];
@@ -56,7 +57,7 @@ export const WorkspaceDashboard = ({
   onImport: (file: File) => void;
   onImportBackup: (file: File) => void;
   onExportBackup: () => void;
-  onProfileChange: (profileId: string) => void;
+  onShowProfileChooser: () => void;
   onCreateProfile: () => void;
   onRenameProfile: () => void;
   onDeleteProfile: () => void;
@@ -64,10 +65,14 @@ export const WorkspaceDashboard = ({
   onProfilePasswordAction: (mode: ProfilePasswordMode) => void;
   onLockProfile: () => void;
   onCheckForUpdates: () => void;
+  onDownloadUpdate: () => void;
   onProjectAction: (project: ProjectSummary, action: ProjectAction) => void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const activeProfile = profiles.find(
+    (profile) => profile.id === activeProfileId,
+  );
 
   return (
     <main className="workspace-dashboard">
@@ -92,14 +97,24 @@ export const WorkspaceDashboard = ({
         </div>
         <div className="workspace-dashboard__header-actions">
           {updateStatus.state === "available" ? (
+            <div className="workspace-update workspace-update--available">
+              <span>Nueva versión · {updateStatus.latestVersion}</span>
+              <button type="button" onClick={onDownloadUpdate}>
+                Descargar actualización
+              </button>
+              <a href={updateStatus.url} target="_blank" rel="noreferrer">
+                Ver detalles
+              </a>
+            </div>
+          ) : updateStatus.state === "pending" ? (
             <a
-              className="workspace-update workspace-update--available"
+              className="workspace-update workspace-update--pending"
               href={updateStatus.url}
               target="_blank"
               rel="noreferrer"
-              title="Ver los cambios publicados en GitHub"
+              title="El instalador todavía se está preparando"
             >
-              <span>Nueva versión</span>
+              <span>Versión en preparación</span>
               <strong>
                 {updateStatus.commits === null
                   ? "Cambios publicados"
@@ -113,9 +128,15 @@ export const WorkspaceDashboard = ({
               type="button"
               className="workspace-update"
               onClick={onCheckForUpdates}
-              disabled={updateStatus.state === "checking"}
+              disabled={
+                updateStatus.state === "checking" ||
+                updateStatus.state === "downloading" ||
+                updateStatus.state === "downloaded"
+              }
               title={
-                updateStatus.state === "error"
+                updateStatus.state === "downloaded"
+                  ? "El DMG está abierto. Cierra Xcalidraw antes de reemplazar la aplicación y vuelve a iniciarla."
+                  : updateStatus.state === "error"
                   ? updateStatus.message
                   : "Consultar la versión publicada en GitHub"
               }
@@ -134,6 +155,10 @@ export const WorkspaceDashboard = ({
                   ? "Buscando…"
                   : updateStatus.state === "current"
                   ? "Al día"
+                  : updateStatus.state === "downloading"
+                  ? "Descargando…"
+                  : updateStatus.state === "downloaded"
+                  ? "Cierra e instala"
                   : updateStatus.state === "error"
                   ? "Reintentar"
                   : "Desarrollo"}
@@ -198,21 +223,14 @@ export const WorkspaceDashboard = ({
       </header>
 
       <section className="workspace-profile-bar" aria-label="Perfil local">
-        <label>
-          <span>Perfil</span>
-          <select
-            value={activeProfileId}
-            onChange={(event) => onProfileChange(event.target.value)}
-          >
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.protection.enabled ? "🔒 " : ""}
-                {profile.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="workspace-profile-bar__identity">
+          <span>Perfil actual</span>
+          <strong>{activeProfile?.name ?? "Perfil"}</strong>
+        </div>
         <div>
+          <button className="workspace-button" onClick={onShowProfileChooser}>
+            Cambiar perfil
+          </button>
           <button className="workspace-button" onClick={onAppearance}>
             Apariencia
           </button>

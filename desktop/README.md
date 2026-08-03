@@ -11,13 +11,15 @@ npm install --prefix desktop
 npm run --prefix desktop dist
 ```
 
-El comando `dist` exige un árbol de trabajo ya guardado en Git, compila la interfaz, incrusta ese commit y luego genera el DMG. Esto evita que una aplicación se identifique como una revisión distinta de su contenido real. El empaquetador usa temporalmente una ruta segura de macOS —también funciona si el directorio del repositorio contiene espacios o `|`— y deja el instalador en `desktop/dist/Xcalidraw-1.2.0-arm64.dmg`. Es una compilación arm64 para Apple Silicon. Al no incluir una identidad Apple Developer ID, macOS puede pedir clic derecho → Abrir en el primer inicio.
+El comando `dist` exige un árbol de trabajo ya guardado en Git, compila la interfaz, incrusta ese commit y luego genera el DMG. Esto evita que una aplicación se identifique como una revisión distinta de su contenido real. El empaquetador usa temporalmente una ruta segura de macOS —también funciona si el directorio del repositorio contiene espacios o `|`— y deja el instalador versionado en `desktop/dist`. Es una compilación arm64 para Apple Silicon. Al no incluir una identidad Apple Developer ID, macOS puede pedir clic derecho → Abrir en el primer inicio.
 
 ## Versiones y actualizaciones
 
-La aplicación no consulta GitHub en segundo plano. Solo cuando se pulsa **Comprobar actualizaciones** consulta la rama `feature/workspaces-projects-views-security` del repositorio `jonymillenium/excalidraw`. Si el commit publicado cambió, el dashboard muestra **Nueva versión** y la cantidad de commits disponibles.
+La aplicación no consulta GitHub en segundo plano. Solo cuando se pulsa **Comprobar actualizaciones** consulta los Releases de escritorio y la rama `feature/workspaces-projects-views-security` del repositorio `jonymillenium/excalidraw`.
 
-La comprobación no descarga ni instala archivos automáticamente: solo detecta publicaciones y enlaza sus cambios. Para actualizar, genera o descarga el nuevo DMG y arrastra Xcalidraw sobre la copia anterior; los perfiles y proyectos se conservan en Application Support.
+Si existe un Release más nuevo con su DMG arm64, el dashboard permite descargarlo dentro de la aplicación y abre el instalador al terminar. Si hay commits nuevos pero el instalador todavía no fue publicado, muestra **Versión en preparación** sin ofrecer una descarga inexistente. Para completar la actualización, cierra Xcalidraw, arrastra la copia nueva sobre la anterior y vuelve a abrirla; los perfiles y proyectos se conservan en Application Support.
+
+El workflow manual **Release Xcalidraw Desktop** compila el commit elegido, verifica el DMG y publica un Release con la etiqueta `xcalidraw-desktop-v<versión>`. Una versión no puede publicarse dos veces.
 
 Para mover el contenido a otra Mac, usa **Exportar todo** en el dashboard, instala la aplicación en la otra computadora y selecciona **Restaurar backup**.
 

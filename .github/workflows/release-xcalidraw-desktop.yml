@@ -1,0 +1,88 @@
+name: Release Xcalidraw Desktop
+
+on:
+  push:
+    branches:
+      - feature/workspaces-projects-views-security
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: xcalidraw-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish macOS DMG
+    runs-on: macos-14
+    steps:
+      - name: Checkout the release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Read desktop release metadata
+        id: desktop
+        run: |
+          xcalidraw_desktop_version="$(node -p "require('./desktop/package.json').version")"
+          echo "version=${xcalidraw_desktop_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=xcalidraw-desktop-v${xcalidraw_desktop_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the version is already published
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XCALIDRAW_DESKTOP_TAG: ${{ steps.desktop.outputs.tag }}
+        run: |
+          if gh release view "$XCALIDRAW_DESKTOP_TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enable the repository package manager
+        if: steps.published.outputs.exists != 'true'
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install web dependencies
+        if: steps.published.outputs.exists != 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        if: steps.published.outputs.exists != 'true'
+        run: npm ci --prefix desktop
+
+      - name: Build the versioned desktop artifact
+        if: steps.published.outputs.exists != 'true'
+        run: npm run --prefix desktop dist
+
+      - name: Verify the disk image
+        if: steps.published.outputs.exists != 'true'
+        env:
+          XCALIDRAW_DESKTOP_VERSION: ${{ steps.desktop.outputs.version }}
+        run: |
+          hdiutil verify "desktop/dist/Xcalidraw-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg"
+          shasum -a 256 "desktop/dist/Xcalidraw-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg"
+
+      - name: Publish the GitHub Release
+        if: steps.published.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XCALIDRAW_DESKTOP_TAG: ${{ steps.desktop.outputs.tag }}
+          XCALIDRAW_DESKTOP_VERSION: ${{ steps.desktop.outputs.version }}
+        run: |
+          gh release create "$XCALIDRAW_DESKTOP_TAG" \
+            "desktop/dist/Xcalidraw-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg" \
+            "desktop/dist/Xcalidraw-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg.blockmap" \
+            --target "$GITHUB_SHA" \
+            --title "Xcalidraw Desktop ${XCALIDRAW_DESKTOP_VERSION}" \
+            --generate-notes

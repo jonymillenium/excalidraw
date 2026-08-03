@@ -1,8 +1,22 @@
-import { existsSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, statSync } from "node:fs";
+import { rename, unlink } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, Menu, net, protocol, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  net,
+  protocol,
+  shell,
+} from "electron";
+
+import { resolveDesktopUpdateDownload } from "./update-security.mjs";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -39,6 +53,50 @@ const installApplicationProtocol = () =>
   protocol.handle("xcalidraw", (request) =>
     net.fetch(pathToFileURL(resolveApplicationFile(request.url)).toString()),
   );
+
+const installDesktopUpdateHandler = () => {
+  ipcMain.handle("xcalidraw:download-update", async (event, request) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (
+      !senderWindow ||
+      !event.sender.getURL().startsWith("xcalidraw://app/")
+    ) {
+      throw new Error("La descarga solo está disponible dentro de Xcalidraw.");
+    }
+    const { downloadUrl, assetName } = resolveDesktopUpdateDownload(request);
+    const selection = await dialog.showSaveDialog(senderWindow, {
+      title: "Guardar actualización de Xcalidraw",
+      defaultPath: path.join(app.getPath("downloads"), assetName),
+      buttonLabel: "Descargar actualización",
+      filters: [{ name: "Instalador de macOS", extensions: ["dmg"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    });
+    if (selection.canceled || !selection.filePath) {
+      return { state: "canceled" };
+    }
+
+    const partialPath = `${selection.filePath}.download`;
+    try {
+      const response = await net.fetch(downloadUrl, { redirect: "follow" });
+      if (!response.ok || !response.body) {
+        throw new Error(`GitHub respondió ${response.status}.`);
+      }
+      await pipeline(
+        Readable.fromWeb(response.body),
+        createWriteStream(partialPath),
+      );
+      await rename(partialPath, selection.filePath);
+      const openError = await shell.openPath(selection.filePath);
+      if (openError) {
+        throw new Error(openError);
+      }
+      return { state: "downloaded", filePath: selection.filePath };
+    } catch (error) {
+      await unlink(partialPath).catch(() => undefined);
+      throw error;
+    }
+  });
+};
 
 const createApplicationMenu = () => {
   const template = [
@@ -112,6 +170,7 @@ const createWindow = () => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(currentDirectory, "preload.mjs"),
       sandbox: true,
     },
   });
@@ -153,6 +212,7 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(() => {
     installApplicationProtocol();
+    installDesktopUpdateHandler();
     createApplicationMenu();
     createWindow();
 

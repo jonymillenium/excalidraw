@@ -8,6 +8,7 @@ import { AppearanceDialog } from "./components/AppearanceDialog";
 import { BackupDialog } from "./components/BackupDialog";
 import { CreateProjectDialog } from "./components/CreateProjectDialog";
 import { ProfileDialog } from "./components/ProfileDialog";
+import { ProfileChooser } from "./components/ProfileChooser";
 import {
   ProfilePasswordDialog,
   type ProfilePasswordMode,
@@ -96,12 +97,13 @@ const getAccentContrast = (color: string) => {
 const WorkspaceApp = () => {
   const [profiles, setProfiles] = useState(getWorkspaceProfiles);
   const [activeProfileId, setActiveProfile] = useState(getActiveProfileId);
+  const [profileSelected, setProfileSelected] = useState(false);
   const activeProfile =
     profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
   const repository = getWorkspaceRepository(activeProfile.id);
   const [route, setRoute] = useState<Route>(parseRoute);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -150,6 +152,52 @@ const WorkspaceApp = () => {
     setUpdateStatus(await checkForApplicationUpdate());
   }, []);
 
+  const downloadUpdate = useCallback(async () => {
+    if (updateStatus.state !== "available") {
+      return;
+    }
+    const availableUpdate = updateStatus;
+    if (!window.xcalidrawDesktop) {
+      window.open(availableUpdate.downloadUrl, "_blank", "noopener,noreferrer");
+      setUpdateStatus({
+        state: "downloaded",
+        version: availableUpdate.version,
+        latestVersion: availableUpdate.latestVersion,
+      });
+      return;
+    }
+
+    setUpdateStatus({
+      state: "downloading",
+      version: availableUpdate.version,
+      latestVersion: availableUpdate.latestVersion,
+    });
+    try {
+      const result = await window.xcalidrawDesktop.downloadUpdate({
+        downloadUrl: availableUpdate.downloadUrl,
+        assetName: availableUpdate.assetName,
+      });
+      setUpdateStatus(
+        result.state === "downloaded"
+          ? {
+              state: "downloaded",
+              version: availableUpdate.version,
+              latestVersion: availableUpdate.latestVersion,
+            }
+          : availableUpdate,
+      );
+    } catch (downloadError) {
+      setUpdateStatus({
+        state: "error",
+        version: availableUpdate.version,
+        message:
+          downloadError instanceof Error
+            ? downloadError.message
+            : "No se pudo descargar la actualización.",
+      });
+    }
+  }, [updateStatus]);
+
   const refreshProjects = useCallback(async () => {
     const next = await repository.listProjects();
     setProjects(next);
@@ -191,6 +239,13 @@ const WorkspaceApp = () => {
   useEffect(() => {
     void profileSessionVersion;
     let active = true;
+    if (!profileSelected) {
+      setLoading(false);
+      setProjects([]);
+      return () => {
+        active = false;
+      };
+    }
     setLoading(true);
     setProjects([]);
     if (activeProfileLocked) {
@@ -212,32 +267,13 @@ const WorkspaceApp = () => {
     }
     void initializationPromise
       .then(async (migrated) => {
-        const [nextProjects, settings] = await Promise.all([
-          repository.listProjects(),
-          repository.getSettings(),
-        ]);
+        const nextProjects = await repository.listProjects();
         if (!active) {
           return;
         }
         setProjects(nextProjects);
         if (migrated) {
           setMessage("Tu lienzo anterior se migró a “Proyecto importado”.");
-        }
-        if (
-          parseRoute().name === "dashboard" &&
-          settings.reopenLastCanvas &&
-          settings.lastProjectId &&
-          settings.lastCanvasId &&
-          nextProjects.some((project) => project.id === settings.lastProjectId)
-        ) {
-          navigate(
-            {
-              name: "workspace",
-              projectId: settings.lastProjectId,
-              canvasId: settings.lastCanvasId,
-            },
-            true,
-          );
         }
       })
       .catch((initError) => {
@@ -257,6 +293,7 @@ const WorkspaceApp = () => {
     activeProfile.id,
     activeProfileLocked,
     navigate,
+    profileSelected,
     profileSessionVersion,
     repository,
   ]);
@@ -543,20 +580,47 @@ const WorkspaceApp = () => {
   const unlockedProjectIds = new Set(projectKeys.current.keys());
 
   const switchProfile = (profileId: string, keepUnlocked = false) => {
-    if (profileId === activeProfile.id) {
-      return;
+    const retainedProfileKey = keepUnlocked
+      ? profileKeys.current.get(profileId)
+      : undefined;
+    const retainUnlockedProfile =
+      keepUnlocked && unlockedProfileIds.current.has(profileId);
+    unlockedProfileIds.current.clear();
+    profileKeys.current.clear();
+    if (retainUnlockedProfile) {
+      unlockedProfileIds.current.add(profileId);
     }
-    if (!keepUnlocked) {
-      unlockedProfileIds.current.delete(profileId);
+    if (retainedProfileKey) {
+      profileKeys.current.set(profileId, retainedProfileKey);
     }
     projectKeys.current.clear();
     setSessionVersion((version) => version + 1);
-    setActiveProfileId(profileId);
-    setActiveProfile(profileId);
+    if (profileId !== activeProfile.id) {
+      setActiveProfileId(profileId);
+      setActiveProfile(profileId);
+    }
+    setProfileSelected(true);
+    setLoading(true);
     setMessage(undefined);
     setError(undefined);
     navigate({ name: "dashboard" }, true);
   };
+
+  const showProfileChooser = () => {
+    unlockedProfileIds.current.clear();
+    profileKeys.current.clear();
+    projectKeys.current.clear();
+    setProjects([]);
+    setLoading(false);
+    setProfileSelected(false);
+    setMessage(undefined);
+    setError(undefined);
+    navigate({ name: "dashboard" }, true);
+  };
+
+  if (!profileSelected) {
+    return <ProfileChooser profiles={profiles} onSelect={switchProfile} />;
+  }
 
   if (loading) {
     return (
@@ -743,7 +807,7 @@ const WorkspaceApp = () => {
             })();
           }}
           onExportBackup={() => setBackupOpen(true)}
-          onProfileChange={switchProfile}
+          onShowProfileChooser={showProfileChooser}
           onCreateProfile={() => setProfileDialog("create")}
           onRenameProfile={() => setProfileDialog("rename")}
           onAppearance={() => setAppearanceOpen(true)}
@@ -756,6 +820,7 @@ const WorkspaceApp = () => {
             setProfileSessionVersion((version) => version + 1);
           }}
           onCheckForUpdates={() => void checkForUpdates()}
+          onDownloadUpdate={() => void downloadUpdate()}
           onDeleteProfile={() => {
             void (async () => {
               const confirmed = await askConfirm({
