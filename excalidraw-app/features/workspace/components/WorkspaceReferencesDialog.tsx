@@ -242,7 +242,11 @@ export const WorkspaceReferencesDialog = ({
           ? "Vista previa en solo lectura"
           : "Biblioteca de proyectos"
       }
-      description="Explora tus proyectos y coloca en el lienzo un acceso directo a un proyecto, un lienzo o una vista concreta. Las vistas conservan su sector, zoom y encuadre."
+      description={
+        initialTarget
+          ? "Recorre el proyecto, sus lienzos y sus vistas sin salir del canvas. Puedes desplazarte y usar el zoom; el contenido no se modifica."
+          : "Explora tus proyectos y coloca en el lienzo un acceso directo a un proyecto, un lienzo o una vista concreta. Las vistas conservan su sector, zoom y encuadre."
+      }
       onClose={onClose}
       size="wide"
     >

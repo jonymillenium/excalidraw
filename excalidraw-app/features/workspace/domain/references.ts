@@ -11,6 +11,36 @@ type WorkspaceReferenceElement = {
   id: string;
   isDeleted?: boolean;
   link?: string | null;
+  customData?: Record<string, unknown> & { workspaceReference?: unknown };
+};
+
+const normalizeWorkspaceReferenceTarget = (
+  value: unknown,
+): WorkspaceReferenceTarget | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<WorkspaceReferenceTarget>;
+  const projectId = candidate.projectId?.trim();
+  const canvasId = candidate.canvasId?.trim() || undefined;
+  const viewId = candidate.viewId?.trim() || undefined;
+  if (
+    !projectId ||
+    (candidate.kind !== "project" &&
+      candidate.kind !== "canvas" &&
+      candidate.kind !== "view") ||
+    ((candidate.kind === "canvas" || candidate.kind === "view") && !canvasId) ||
+    (candidate.kind === "view" && !viewId)
+  ) {
+    return null;
+  }
+  if (candidate.kind === "view") {
+    return { kind: candidate.kind, projectId, canvasId, viewId };
+  }
+  if (candidate.kind === "canvas") {
+    return { kind: candidate.kind, projectId, canvasId };
+  }
+  return { kind: candidate.kind, projectId };
 };
 
 export const createWorkspaceReferenceLink = (
@@ -85,7 +115,9 @@ export const getSelectedWorkspaceReferenceTarget = (
       continue;
     }
     selectedCount += 1;
-    const target = parseWorkspaceReferenceLink(element.link);
+    const target =
+      parseWorkspaceReferenceLink(element.link) ??
+      normalizeWorkspaceReferenceTarget(element.customData?.workspaceReference);
     if (!target || (selectedTarget && !targetsMatch(selectedTarget, target))) {
       return null;
     }

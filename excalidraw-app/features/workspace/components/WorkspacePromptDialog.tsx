@@ -11,6 +11,8 @@ type TextPromptOptions = {
   inputType?: "text" | "password";
   autoComplete?: string;
   confirmLabel?: string;
+  secondaryLabel?: string;
+  secondaryValue?: string;
   required?: boolean;
   maxLength?: number;
 };
@@ -82,6 +84,15 @@ const WorkspacePromptDialog = ({
           >
             Cancelar
           </button>
+          {request.kind === "text" && request.secondaryLabel && (
+            <button
+              type="button"
+              className="workspace-button"
+              onClick={() => onResolve(request.secondaryValue ?? "")}
+            >
+              {request.secondaryLabel}
+            </button>
+          )}
           <button
             type="submit"
             className={`workspace-button workspace-button--primary${

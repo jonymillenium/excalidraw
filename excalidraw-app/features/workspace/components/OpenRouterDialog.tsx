@@ -24,6 +24,8 @@ import {
 
 import { WorkspaceDialog } from "./WorkspaceDialog";
 
+import { ImageFilePreview } from "./ImageFilePreview";
+
 import type { ProfileProtection } from "../domain/types";
 import type { WorkspaceRepository } from "../storage/WorkspaceRepository";
 
@@ -132,8 +134,10 @@ export const OpenRouterDialog = ({
   const [model, setModel] = useState("");
   const [password, setPassword] = useState("");
   const [image, setImage] = useState<File>();
+  const [imageInputVersion, setImageInputVersion] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [mediaFile, setMediaFile] = useState<File>();
+  const [mediaInputVersion, setMediaInputVersion] = useState(0);
   const [analysisProfile, setAnalysisProfile] =
     useState<AIAnalysisProfile>("executive");
   const [mediaPrompt, setMediaPrompt] = useState("");
@@ -446,11 +450,21 @@ export const OpenRouterDialog = ({
           <label>
             Imagen
             <input
+              key={imageInputVersion}
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setImage(event.target.files?.[0])}
             />
           </label>
+          {image && (
+            <ImageFilePreview
+              file={image}
+              onRemove={() => {
+                setImage(undefined);
+                setImageInputVersion((current) => current + 1);
+              }}
+            />
+          )}
           <label>
             Indicaciones adicionales
             <textarea
@@ -506,6 +520,7 @@ export const OpenRouterDialog = ({
           <label>
             Material
             <input
+              key={mediaInputVersion}
               type="file"
               accept="image/*,application/pdf,audio/*,video/mp4,video/mpeg,video/quicktime,video/webm"
               onChange={(event) => {
@@ -514,6 +529,16 @@ export const OpenRouterDialog = ({
               }}
             />
           </label>
+          {mediaFile?.type.startsWith("image/") && (
+            <ImageFilePreview
+              file={mediaFile}
+              onRemove={() => {
+                setMediaFile(undefined);
+                setMediaAnalysis(undefined);
+                setMediaInputVersion((current) => current + 1);
+              }}
+            />
+          )}
           <div className="openrouter-analysis-profiles">
             <button
               type="button"

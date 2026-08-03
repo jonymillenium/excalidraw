@@ -983,6 +983,75 @@ export const ProjectWorkspace = ({
     }
   };
 
+  const createNewCanvas = async () => {
+    const name = await askText({
+      title: "Crear nuevo lienzo",
+      description:
+        "Ponle un nombre para encontrarlo rápido. Si todavía no definiste la idea, puedes dejarlo como “Lienzo sin nombre” y renombrarlo después.",
+      label: "Nombre del lienzo",
+      placeholder: "Ej. Flujo de onboarding",
+      confirmLabel: "Crear lienzo",
+      secondaryLabel: "Crear como “Lienzo sin nombre”",
+      secondaryValue: "Lienzo sin nombre",
+      maxLength: 120,
+    });
+    if (name === null) {
+      return;
+    }
+    try {
+      await flushAll();
+      const created = await repository.createCanvas(
+        projectId,
+        name.trim(),
+        projectKey,
+      );
+      await refreshMetadata();
+      onProjectChanged();
+      onNavigateCanvas(created.id);
+    } catch (createError) {
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : "No se pudo crear el lienzo.",
+      );
+    }
+  };
+
+  const renameWorkspaceCanvas = async (canvas: CanvasSummary) => {
+    if (readOnly) {
+      return;
+    }
+    const name = await askText({
+      title: "Renombrar lienzo",
+      description:
+        "El nuevo nombre se reflejará en el proyecto y en sus referencias.",
+      label: "Nombre del lienzo",
+      initialValue: canvas.name,
+      confirmLabel: "Guardar nombre",
+      maxLength: 120,
+    });
+    const nextName = name?.trim();
+    if (!nextName || nextName === canvas.name) {
+      return;
+    }
+    try {
+      await repository.renameCanvas(projectId, canvas.id, nextName);
+      await refreshMetadata();
+      if (canvas.id === canvasId) {
+        setLoadedCanvas((current) =>
+          current ? { ...current, name: nextName } : current,
+        );
+      }
+      onProjectChanged();
+    } catch (renameError) {
+      setError(
+        renameError instanceof Error
+          ? renameError.message
+          : "No se pudo renombrar el lienzo.",
+      );
+    }
+  };
+
   const moveCanvas = async (id: string, direction: -1 | 1) => {
     const index = canvases.findIndex((canvas) => canvas.id === id);
     const nextIndex = index + direction;
@@ -1238,7 +1307,22 @@ export const ProjectWorkspace = ({
               <div className="project-workspace__path">
                 <strong>{project.name}</strong>
                 <span aria-hidden="true">/</span>
-                <span>{loadedCanvas.name}</span>
+                <button
+                  type="button"
+                  className="project-workspace__canvas-name"
+                  disabled={readOnly}
+                  onDoubleClick={() => void renameWorkspaceCanvas(loadedCanvas)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === "F2") {
+                      event.preventDefault();
+                      void renameWorkspaceCanvas(loadedCanvas);
+                    }
+                  }}
+                  aria-label={`Renombrar lienzo ${loadedCanvas.name}`}
+                  title="Doble clic para renombrar"
+                >
+                  {loadedCanvas.name}
+                </button>
               </div>
               <div className="project-workspace__status" role="status">
                 <span className={`save-status save-status--${saveStatus}`}>
@@ -1292,27 +1376,11 @@ export const ProjectWorkspace = ({
                 <button
                   role="menuitem"
                   disabled={readOnly}
-                  onClick={async (event) => {
+                  onClick={(event) => {
                     event.currentTarget
                       .closest("details")
                       ?.removeAttribute("open");
-                    try {
-                      await flushAll();
-                      const created = await repository.createCanvas(
-                        projectId,
-                        undefined,
-                        projectKey,
-                      );
-                      await refreshMetadata();
-                      onProjectChanged();
-                      onNavigateCanvas(created.id);
-                    } catch (createError) {
-                      setError(
-                        createError instanceof Error
-                          ? createError.message
-                          : "No se pudo crear el lienzo.",
-                      );
-                    }
+                    void createNewCanvas();
                   }}
                 >
                   <strong>Nuevo lienzo</strong>
@@ -1519,17 +1587,7 @@ export const ProjectWorkspace = ({
             <button
               className="workspace-button workspace-button--primary workspace-button--full"
               disabled={readOnly}
-              onClick={async () => {
-                await flushAll();
-                const created = await repository.createCanvas(
-                  projectId,
-                  undefined,
-                  projectKey,
-                );
-                await refreshMetadata();
-                onProjectChanged();
-                onNavigateCanvas(created.id);
-              }}
+              onClick={() => void createNewCanvas()}
             >
               + Nuevo lienzo
             </button>
@@ -1557,25 +1615,7 @@ export const ProjectWorkspace = ({
                     </summary>
                     <div className="workspace-menu__items">
                       <button
-                        onClick={async () => {
-                          const name = await askText({
-                            title: "Renombrar lienzo",
-                            description:
-                              "El nuevo nombre se reflejará en el proyecto y en sus referencias.",
-                            label: "Nombre del lienzo",
-                            initialValue: canvas.name,
-                            confirmLabel: "Guardar nombre",
-                            maxLength: 120,
-                          });
-                          if (name?.trim()) {
-                            await repository.renameCanvas(
-                              projectId,
-                              canvas.id,
-                              name,
-                            );
-                            await refreshMetadata();
-                          }
-                        }}
+                        onClick={() => void renameWorkspaceCanvas(canvas)}
                       >
                         Renombrar
                       </button>

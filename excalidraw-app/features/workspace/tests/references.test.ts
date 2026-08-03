@@ -122,4 +122,24 @@ describe("workspace references", () => {
       ),
     ).toEqual(target);
   });
+
+  it("resolves restored shortcuts from their embedded target metadata", () => {
+    const target = {
+      kind: "canvas" as const,
+      projectId: "project-1",
+      canvasId: "canvas-1",
+    };
+
+    expect(
+      getSelectedWorkspaceReferenceTarget(
+        [
+          {
+            id: "restored-card",
+            customData: { workspaceReference: target },
+          },
+        ],
+        { "restored-card": true },
+      ),
+    ).toEqual(target);
+  });
 });
