@@ -29,6 +29,10 @@ export const actionAddToLibrary = register({
       }
     }
 
+    // The sidebar flow asks for a custom name before saving. The context-menu
+    // shortcut stays one-click and still guarantees searchable metadata.
+    const name = t("library.naming.defaultName");
+
     return app.library
       .getLatestLibrary()
       .then((items) => {
@@ -38,6 +42,8 @@ export const actionAddToLibrary = register({
             status: "unpublished",
             elements: selectedElements.map(deepCopyElement),
             created: Date.now(),
+            name,
+            folderPath: [],
           },
           ...items,
         ]);

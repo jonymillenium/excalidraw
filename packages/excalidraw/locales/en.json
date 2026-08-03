@@ -203,6 +203,22 @@
     "noItems": "No items added yet...",
     "hint_emptyLibrary": "Select an item on canvas to add it here, or install a library from the public repository, below.",
     "hint_emptyPrivateLibrary": "Select an item on canvas to add it here.",
+    "naming": {
+      "prompt": "Name this library item",
+      "defaultName": "New asset",
+      "add": "Add",
+      "rename": "Rename asset",
+      "unnamed": "Unnamed"
+    },
+    "folders": {
+      "root": "Library",
+      "new": "New folder",
+      "prompt": "Folder name",
+      "create": "Create folder",
+      "moveHere": "Move here",
+      "rename": "Rename",
+      "empty": "This folder is empty"
+    },
     "search": {
       "inputPlaceholder": "Search library",
       "heading": "Library matches",

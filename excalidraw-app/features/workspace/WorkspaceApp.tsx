@@ -15,6 +15,7 @@ import {
 import { ProfileUnlockScreen } from "./components/ProfileUnlockScreen";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { UnlockProjectDialog } from "./components/UnlockProjectDialog";
+import { useWorkspacePrompts } from "./components/WorkspacePromptDialog";
 import {
   WorkspaceDashboard,
   type ProjectAction,
@@ -42,6 +43,7 @@ import {
   checkForApplicationUpdate,
   type ApplicationUpdateStatus,
 } from "./services/updateChecker";
+import { reencryptOpenRouterConfiguration } from "./services/openRouter";
 import {
   deleteWorkspaceProfileDatabase,
   getWorkspaceRepository,
@@ -59,7 +61,12 @@ polyfill();
 
 type Route =
   | { name: "dashboard" }
-  | { name: "workspace"; projectId: string; canvasId: string };
+  | {
+      name: "workspace";
+      projectId: string;
+      canvasId: string;
+      viewId?: string;
+    };
 
 const parseRoute = (): Route => {
   const match = window.location.pathname.match(
@@ -70,6 +77,8 @@ const parseRoute = (): Route => {
         name: "workspace",
         projectId: decodeURIComponent(match[1]),
         canvasId: decodeURIComponent(match[2]),
+        viewId:
+          new URL(window.location.href).searchParams.get("view") ?? undefined,
       }
     : { name: "dashboard" };
 };
@@ -110,7 +119,9 @@ const WorkspaceApp = () => {
     state: "idle",
     version: import.meta.env.VITE_APP_VERSION ?? "dev",
   });
+  const { askText, askConfirm, promptDialog } = useWorkspacePrompts();
   const projectKeys = useRef(new Map<string, CryptoKey>());
+  const profileKeys = useRef(new Map<string, CryptoKey>());
   const unlockedProfileIds = useRef(new Set<string>());
   const activeProfileLocked =
     activeProfile.protection.enabled &&
@@ -151,18 +162,22 @@ const WorkspaceApp = () => {
         ? "/"
         : `/project/${encodeURIComponent(
             nextRoute.projectId,
-          )}/canvas/${encodeURIComponent(nextRoute.canvasId)}`;
+          )}/canvas/${encodeURIComponent(nextRoute.canvasId)}${
+            nextRoute.viewId
+              ? `?view=${encodeURIComponent(nextRoute.viewId)}`
+              : ""
+          }`;
     window.history[replace ? "replaceState" : "pushState"]({}, "", path);
     setRoute(nextRoute);
   }, []);
 
   const navigateToCanvas = useCallback(
-    (projectId: string, canvasId: string) => {
+    (projectId: string, canvasId: string, viewId?: string) => {
       void repository.updateSettings({
         lastProjectId: projectId,
         lastCanvasId: canvasId,
       });
-      navigate({ name: "workspace", projectId, canvasId });
+      navigate({ name: "workspace", projectId, canvasId, viewId });
     },
     [navigate, repository],
   );
@@ -270,7 +285,15 @@ const WorkspaceApp = () => {
       if (cached) {
         return cached;
       }
-      const password = window.prompt(`Contraseña de “${project.name}”`);
+      const password = await askText({
+        title: `Desbloquear “${project.name}”`,
+        description:
+          "La contraseña se usa localmente para descifrar este proyecto.",
+        label: "Contraseña",
+        inputType: "password",
+        autoComplete: "current-password",
+        confirmLabel: "Desbloquear",
+      });
       if (!password) {
         throw new Error("La operación fue cancelada.");
       }
@@ -279,7 +302,7 @@ const WorkspaceApp = () => {
       setSessionVersion((version) => version + 1);
       return key;
     },
-    [repository],
+    [askText, repository],
   );
 
   const importProjectData = useCallback(
@@ -290,16 +313,20 @@ const WorkspaceApp = () => {
         if (!(importError instanceof WorkspacePasswordRequiredError)) {
           throw importError;
         }
-        const password = window.prompt(
-          `Ya existe “${data.project.name}” con el mismo ID. Introduce la contraseña del backup para restaurarlo con IDs nuevos.`,
-        );
+        const password = await askText({
+          title: "Restaurar copia protegida",
+          description: `Ya existe “${data.project.name}” con el mismo ID. Introduce la contraseña del backup para restaurarlo con IDs nuevos.`,
+          label: "Contraseña del backup",
+          inputType: "password",
+          confirmLabel: "Restaurar copia",
+        });
         if (!password) {
           throw new Error("La restauración fue cancelada.");
         }
         return targetRepository.importProject(data, password);
       }
     },
-    [],
+    [askText],
   );
 
   const openProject = useCallback(
@@ -340,7 +367,15 @@ const WorkspaceApp = () => {
         if (action === "open") {
           await openProject(project);
         } else if (action === "rename") {
-          const name = window.prompt("Nuevo nombre del proyecto", project.name);
+          const name = await askText({
+            title: "Renombrar proyecto",
+            description:
+              "Este nombre aparecerá en el dashboard y en las referencias del lienzo.",
+            label: "Nombre del proyecto",
+            initialValue: project.name,
+            confirmLabel: "Guardar nombre",
+            maxLength: 120,
+          });
           if (name?.trim()) {
             await repository.updateProject(project.id, { name });
             await refreshProjects();
@@ -357,18 +392,32 @@ const WorkspaceApp = () => {
           await refreshProjects();
           setMessage(`Se creó “${copy.name}”.`);
         } else if (action === "protect") {
-          if (
-            !window.confirm(
-              "No existe recuperación de contraseña. Si la pierdes, el contenido no podrá recuperarse. ¿Continuar?",
-            )
-          ) {
+          const acceptedRisk = await askConfirm({
+            title: "Proteger este proyecto",
+            description:
+              "No existe recuperación de contraseña. Si la pierdes, el contenido cifrado no podrá recuperarse.",
+            confirmLabel: "Entiendo, continuar",
+          });
+          if (!acceptedRisk) {
             return;
           }
-          const password = window.prompt("Nueva contraseña");
+          const password = await askText({
+            title: "Crear contraseña",
+            label: "Nueva contraseña",
+            inputType: "password",
+            autoComplete: "new-password",
+            confirmLabel: "Continuar",
+          });
           if (!password) {
             return;
           }
-          const confirmation = window.prompt("Confirma la nueva contraseña");
+          const confirmation = await askText({
+            title: "Confirmar contraseña",
+            label: "Repite la nueva contraseña",
+            inputType: "password",
+            autoComplete: "new-password",
+            confirmLabel: "Proteger proyecto",
+          });
           if (password !== confirmation) {
             throw new Error("Las contraseñas no coinciden.");
           }
@@ -377,10 +426,30 @@ const WorkspaceApp = () => {
           setSessionVersion((version) => version + 1);
           await refreshProjects();
         } else if (action === "change-password") {
-          const current = window.prompt("Contraseña actual");
-          const next = current ? window.prompt("Nueva contraseña") : null;
+          const current = await askText({
+            title: "Cambiar contraseña",
+            label: "Contraseña actual",
+            inputType: "password",
+            autoComplete: "current-password",
+            confirmLabel: "Continuar",
+          });
+          const next = current
+            ? await askText({
+                title: "Nueva contraseña",
+                label: "Nueva contraseña",
+                inputType: "password",
+                autoComplete: "new-password",
+                confirmLabel: "Continuar",
+              })
+            : null;
           const confirmation = next
-            ? window.prompt("Confirma la nueva contraseña")
+            ? await askText({
+                title: "Confirmar contraseña",
+                label: "Repite la nueva contraseña",
+                inputType: "password",
+                autoComplete: "new-password",
+                confirmLabel: "Cambiar contraseña",
+              })
             : null;
           if (!current || !next) {
             return;
@@ -400,10 +469,23 @@ const WorkspaceApp = () => {
           );
           await refreshProjects();
         } else if (action === "remove-password") {
-          if (!window.confirm("¿Quitar el cifrado de este proyecto?")) {
+          const confirmed = await askConfirm({
+            title: "Quitar contraseña",
+            description:
+              "El proyecto dejará de estar cifrado en este dispositivo.",
+            confirmLabel: "Quitar cifrado",
+            destructive: true,
+          });
+          if (!confirmed) {
             return;
           }
-          const current = window.prompt("Contraseña actual");
+          const current = await askText({
+            title: "Verificar identidad",
+            label: "Contraseña actual",
+            inputType: "password",
+            autoComplete: "current-password",
+            confirmLabel: "Quitar cifrado",
+          });
           if (!current) {
             return;
           }
@@ -420,11 +502,14 @@ const WorkspaceApp = () => {
         } else if (action === "export") {
           await downloadProject(repository, project.id);
         } else if (action === "delete") {
-          if (
-            window.confirm(
-              `¿Eliminar “${project.name}”? Se borrarán localmente todos sus lienzos, archivos y vistas. Esta acción es definitiva.`,
-            )
-          ) {
+          const confirmed = await askConfirm({
+            title: `Eliminar “${project.name}”`,
+            description:
+              "Se borrarán localmente todos sus lienzos, archivos y vistas. Esta acción es definitiva.",
+            confirmLabel: "Eliminar proyecto",
+            destructive: true,
+          });
+          if (confirmed) {
             await repository.deleteProject(project.id);
             projectKeys.current.delete(project.id);
             await refreshProjects();
@@ -443,6 +528,8 @@ const WorkspaceApp = () => {
       }
     },
     [
+      askConfirm,
+      askText,
       getKeyForProtectedProject,
       navigate,
       openProject,
@@ -490,11 +577,12 @@ const WorkspaceApp = () => {
           if (!activeProfile.protection.enabled) {
             return;
           }
-          await unlockProfile(
+          const key = await unlockProfile(
             activeProfile.id,
             activeProfile.protection,
             password,
           );
+          profileKeys.current.set(activeProfile.id, key);
           unlockedProfileIds.current.add(activeProfile.id);
           setProfileSessionVersion((version) => version + 1);
         }}
@@ -519,10 +607,33 @@ const WorkspaceApp = () => {
           repository={repository}
           projectId={route.projectId}
           canvasId={route.canvasId}
+          targetViewId={route.viewId}
           projectKey={activeKey}
+          profileId={activeProfile.id}
+          profileName={activeProfile.name}
+          profileProtection={activeProfile.protection}
+          profileKey={profileKeys.current.get(activeProfile.id)}
+          onVerifyProfilePassword={async (password) => {
+            if (!activeProfile.protection.enabled) {
+              throw new Error(
+                "Añade una contraseña al perfil antes de configurar OpenRouter.",
+              );
+            }
+            const key = await unlockProfile(
+              activeProfile.id,
+              activeProfile.protection,
+              password,
+            );
+            profileKeys.current.set(activeProfile.id, key);
+            setProfileSessionVersion((version) => version + 1);
+            return key;
+          }}
           onBack={() => navigate({ name: "dashboard" })}
           onNavigateCanvas={(canvasId) =>
             navigateToCanvas(route.projectId, canvasId)
+          }
+          onNavigateReference={(projectId, canvasId, viewId) =>
+            navigateToCanvas(projectId, canvasId, viewId)
           }
           onLock={() => {
             projectKeys.current.delete(route.projectId);
@@ -562,12 +673,15 @@ const WorkspaceApp = () => {
             void (async () => {
               try {
                 const backup = await readWorkspaceBackup(file);
-                if (
-                  projects.length &&
-                  !window.confirm(
-                    "El backup se combinará con los proyectos existentes sin borrarlos. ¿Continuar?",
-                  )
-                ) {
+                const shouldMerge =
+                  !projects.length ||
+                  (await askConfirm({
+                    title: "Combinar backup",
+                    description:
+                      "El backup se combinará con los proyectos existentes sin borrar nada.",
+                    confirmLabel: "Combinar y restaurar",
+                  }));
+                if (!shouldMerge) {
                   return;
                 }
                 setMessage("Restaurando backup…");
@@ -636,6 +750,7 @@ const WorkspaceApp = () => {
           onProfilePasswordAction={setProfilePasswordMode}
           onLockProfile={() => {
             unlockedProfileIds.current.delete(activeProfile.id);
+            profileKeys.current.delete(activeProfile.id);
             projectKeys.current.clear();
             navigate({ name: "dashboard" }, true);
             setProfileSessionVersion((version) => version + 1);
@@ -643,11 +758,14 @@ const WorkspaceApp = () => {
           onCheckForUpdates={() => void checkForUpdates()}
           onDeleteProfile={() => {
             void (async () => {
-              if (
-                !window.confirm(
-                  `¿Eliminar el perfil “${activeProfile.name}” y todos sus proyectos? Esta acción es definitiva.`,
-                )
-              ) {
+              const confirmed = await askConfirm({
+                title: `Eliminar el perfil “${activeProfile.name}”`,
+                description:
+                  "Se eliminarán todos sus proyectos y datos locales. Esta acción es definitiva.",
+                confirmLabel: "Eliminar perfil",
+                destructive: true,
+              });
+              if (!confirmed) {
                 return;
               }
               try {
@@ -661,6 +779,7 @@ const WorkspaceApp = () => {
                 navigate({ name: "dashboard" }, true);
                 projectKeys.current.clear();
                 unlockedProfileIds.current.delete(activeProfile.id);
+                profileKeys.current.delete(activeProfile.id);
                 await deleteWorkspaceProfileDatabase(activeProfile.id);
                 setProfiles(removeWorkspaceProfile(activeProfile.id));
                 setActiveProfileId(nextProfile.id);
@@ -733,6 +852,16 @@ const WorkspaceApp = () => {
               const profile = await createWorkspaceProfile(name, password);
               if (profile.protection.enabled) {
                 unlockedProfileIds.current.add(profile.id);
+                if (password) {
+                  profileKeys.current.set(
+                    profile.id,
+                    await unlockProfile(
+                      profile.id,
+                      profile.protection,
+                      password,
+                    ),
+                  );
+                }
               }
               setProfiles(getWorkspaceProfiles());
               setProfileDialog(null);
@@ -751,15 +880,25 @@ const WorkspaceApp = () => {
           profileName={activeProfile.name}
           onCancel={() => setProfilePasswordMode(null)}
           onSubmit={async ({ currentPassword, newPassword }) => {
+            let currentKey: CryptoKey | undefined;
             if (profilePasswordMode !== "add") {
               if (!activeProfile.protection.enabled || !currentPassword) {
                 throw new Error("La contraseña actual es obligatoria.");
               }
-              await unlockProfile(
+              currentKey = await unlockProfile(
                 activeProfile.id,
                 activeProfile.protection,
                 currentPassword,
               );
+              profileKeys.current.set(activeProfile.id, currentKey);
+            }
+            if (profilePasswordMode === "remove") {
+              const settings = await repository.getSettings();
+              if (settings.ai) {
+                throw new Error(
+                  "Borra primero la API key de OpenRouter. No puede quedar almacenada en un perfil sin contraseña.",
+                );
+              }
             }
             const protection =
               profilePasswordMode === "remove"
@@ -768,13 +907,31 @@ const WorkspaceApp = () => {
                     activeProfile.id,
                     newPassword ?? "",
                   );
+            let nextKey: CryptoKey | undefined;
+            if (protection.enabled) {
+              nextKey = await unlockProfile(
+                activeProfile.id,
+                protection,
+                newPassword ?? "",
+              );
+              if (profilePasswordMode === "change" && currentKey) {
+                await reencryptOpenRouterConfiguration({
+                  repository,
+                  profileId: activeProfile.id,
+                  currentKey,
+                  nextKey,
+                });
+              }
+            }
             setProfiles(
               updateWorkspaceProfileProtection(activeProfile.id, protection),
             );
-            if (protection.enabled) {
+            if (protection.enabled && nextKey) {
               unlockedProfileIds.current.add(activeProfile.id);
+              profileKeys.current.set(activeProfile.id, nextKey);
             } else {
               unlockedProfileIds.current.delete(activeProfile.id);
+              profileKeys.current.delete(activeProfile.id);
             }
             setProfilePasswordMode(null);
             setMessage(
@@ -825,6 +982,7 @@ const WorkspaceApp = () => {
           }}
         />
       )}
+      {promptDialog}
     </>
   );
 };

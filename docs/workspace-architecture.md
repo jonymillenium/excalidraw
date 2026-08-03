@@ -79,9 +79,27 @@ The packaging command embeds its Git commit and application version. The install
 
 Each profile stores an accent color, line style, and intensity. These values become CSS custom properties and body data attributes before the dashboard is rendered, so dashboard highlights, buttons, window contour, and automotive background lines stay consistent across sessions and backups without coupling the Excalidraw editor engine to a particular theme.
 
-## Future AI extension
+## Precision snapping
 
-`WorkspaceAIProvider` is a provider-neutral interface in the domain layer. The MVP has no implementation, API key, UI, remote call, or persistence coupling.
+Workspace canvases enable object snapping by default and carry an `editorFeatures.precisionSnappingVersion` marker. A canvas without the marker is migrated once to the new enabled default; subsequent autosaves persist the marker so an explicit user preference remains respected. Smart guides align edges and centers during creation, movement, and resize, visualize equal gaps with measured high-contrast guides, and keep guide weight constant across zoom levels. In-place duplication preserves exact coordinates, while Option-drag rebuilds its snap cache around the duplicated selection so the stationary source remains a valid reference.
+
+## Canvas authoring and organization
+
+Each canvas persists six editable color-profile slots, including background, element color, and a measured contrast level. Applying a profile can affect only future elements or recolor existing strokes. Locked selections use Excalidraw's element-lock action rather than the toolbar's keep-tool-active state, so the padlock prevents translation and editing immediately.
+
+Freehand strokes created in one drawing run are tracked until the user chooses to keep them as individual elements or save them under one shared group id. Saved views keep names, descriptions, ordering, hierarchical folder paths, and their explicit empty folders. Library assets similarly require a name, participate in text search, and carry portable folder/subfolder paths in `.excalidrawlib` data.
+
+Canvas autosave renders a fitted, background-aware WebP thumbnail for every unprotected canvas. Project cards choose the most recent thumbnail. Internal workspace references use `xcalidraw://workspace` links stored on native grouped Excalidraw elements; a target may identify a project, canvas, or saved view. Resolving a view link opens a live, viewport-cropped preview and carries its view id through navigation so the destination restores the saved bounds and zoom after loading. Protected projects never persist thumbnail pixels. Workspace naming, folder, password, and destructive flows use application-owned accessible dialogs instead of browser prompts.
+
+## OpenRouter AI
+
+OpenRouter configuration is profile-scoped. The API key is encrypted with the profile-derived AES-GCM key and the UI retains only its last four-character hint. Reading, replacing, deleting, or changing configuration requires the profile administrator password; removing profile protection is rejected while a key exists. A profile password change re-encrypts the API key before the new protection record is committed.
+
+The model catalog is read dynamically from OpenRouter and filtered for image input, text output, and structured-output support. Recommendations cover economical, balanced, high-fidelity, and Google-style omnimodal models, show declared input modalities and per-token prices, and treat routed/unknown prices as variable. Changing only the model never decrypts or replaces the stored API key.
+
+The generation surface supports text-to-Mermaid, direct Mermaid-to-editable-elements, structured screenshot/photo reconstruction, and image/PDF/audio/video analysis into editable Mermaid. Analysis can run as executive, rapid-overview, or deep hierarchical profiles and returns a summary plus follow-up questions for a second pass. OpenRouter's reported request tokens and cost are aggregated into a 180-day profile ledger and displayed day by day.
+
+`WorkspaceAIProvider` remains the provider-neutral domain boundary for future providers.
 
 ## Local development
 

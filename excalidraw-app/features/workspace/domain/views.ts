@@ -22,7 +22,11 @@ export const createSavedView = (
   canvasId: string,
   appState: AppState,
   existingViews: SavedView[],
-  metadata?: { name?: string; description?: string },
+  metadata?: {
+    name?: string;
+    description?: string;
+    folderPath?: string[];
+  },
 ): SavedView => {
   const now = Date.now();
   return {
@@ -30,6 +34,9 @@ export const createSavedView = (
     canvasId,
     name: metadata?.name?.trim() || `Vista ${existingViews.length + 1}`,
     description: metadata?.description?.trim() || undefined,
+    folderPath: metadata?.folderPath?.length
+      ? [...metadata.folderPath]
+      : undefined,
     order: existingViews.length,
     rect: captureVisibleRect(appState),
     transitionDurationMs: 400,
@@ -56,5 +63,38 @@ export const moveSavedView = (
     return ordered;
   }
   [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
+  return ordered.map((view, order) => ({ ...view, order }));
+};
+
+const sameFolderPath = (
+  first: readonly string[] | undefined,
+  second: readonly string[],
+) => (first ?? []).join("\u001f") === second.join("\u001f");
+
+export const moveSavedViewWithinFolder = (
+  views: SavedView[],
+  viewId: string,
+  direction: -1 | 1,
+  folderPath: readonly string[],
+) => {
+  const ordered = normalizeViewOrder(views);
+  const indices = ordered.flatMap((view, index) =>
+    sameFolderPath(view.folderPath, folderPath) ? [index] : [],
+  );
+  const localIndex = indices.findIndex((index) => ordered[index].id === viewId);
+  const nextLocalIndex = localIndex + direction;
+  if (
+    localIndex < 0 ||
+    nextLocalIndex < 0 ||
+    nextLocalIndex >= indices.length
+  ) {
+    return ordered;
+  }
+  const firstIndex = indices[localIndex];
+  const secondIndex = indices[nextLocalIndex];
+  [ordered[firstIndex], ordered[secondIndex]] = [
+    ordered[secondIndex],
+    ordered[firstIndex],
+  ];
   return ordered.map((view, order) => ({ ...view, order }));
 };

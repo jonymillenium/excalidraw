@@ -4,6 +4,7 @@ import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
 export const WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const WORKSPACE_EXPORT_TYPE = "excalidraw-workspace" as const;
 export const WORKSPACE_BACKUP_TYPE = "excalidraw-workspace-backup" as const;
+export const PRECISION_SNAPPING_VERSION = 1 as const;
 
 export type WorkspaceSchemaVersion = typeof WORKSPACE_SCHEMA_VERSION;
 
@@ -12,6 +13,8 @@ export type SavedView = {
   canvasId: string;
   name: string;
   description?: string;
+  /** Hierarchical location inside the views sidebar. Empty means root. */
+  folderPath?: string[];
   order: number;
   rect: {
     x: number;
@@ -25,11 +28,31 @@ export type SavedView = {
   thumbnail?: string;
 };
 
+export type CanvasContrastLevel = "soft" | "balanced" | "high" | "custom";
+
+export type CanvasColorProfile = {
+  id: string;
+  name: string;
+  backgroundColor: string;
+  elementColor: string;
+  contrastLevel: CanvasContrastLevel;
+  updatedAt: number;
+};
+
+export const CANVAS_COLOR_PROFILE_SLOTS = 6 as const;
+
 export type CanvasPayload = {
   elements: readonly ExcalidrawElement[];
   appState: Partial<AppState>;
   fileIds: FileId[];
   views: SavedView[];
+  /** Explicit list keeps empty folders and subfolders persistent. */
+  viewFolders?: string[][];
+  /** Six user-editable color presets. Null entries are intentionally empty. */
+  colorProfiles?: Array<CanvasColorProfile | null>;
+  editorFeatures?: {
+    precisionSnappingVersion: typeof PRECISION_SNAPPING_VERSION;
+  };
 };
 
 export type PlainEnvelope<T = unknown> = {
@@ -124,6 +147,14 @@ export type WorkspaceFileRecord = {
   schemaVersion: WorkspaceSchemaVersion;
 };
 
+export type WorkspaceThumbnailRecord = {
+  id: string;
+  projectId: string;
+  canvasId: string;
+  dataURL: string;
+  updatedAt: number;
+};
+
 export type ProjectSummary = Pick<
   ProjectRecord,
   | "id"
@@ -135,6 +166,7 @@ export type ProjectSummary = Pick<
   | "protection"
 > & {
   canvasCount: number;
+  thumbnail?: string;
 };
 
 export type ProjectDetails = ProjectSummary & ProjectPrivateData;
@@ -161,6 +193,25 @@ export type WorkspaceSettings = {
   reopenLastCanvas: boolean;
   legacyMigrationCompleted: boolean;
   schemaVersion: WorkspaceSchemaVersion;
+  ai?: WorkspaceAISettings;
+};
+
+export type WorkspaceAIUsageDay = {
+  date: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+};
+
+export type WorkspaceAISettings = {
+  provider: "openrouter";
+  model: string;
+  apiKey: EncryptedEnvelope;
+  apiKeyHint: string;
+  updatedAt: number;
+  usage: WorkspaceAIUsageDay[];
 };
 
 export type WorkspaceProfile = {
@@ -210,9 +261,15 @@ export const createEmptyCanvasPayload = (): CanvasPayload => ({
     viewBackgroundColor: "#ffffff",
     scrollX: 0,
     scrollY: 0,
+    objectsSnapModeEnabled: true,
   },
   fileIds: [],
   views: [],
+  viewFolders: [],
+  colorProfiles: Array.from({ length: CANVAS_COLOR_PROFILE_SLOTS }, () => null),
+  editorFeatures: {
+    precisionSnappingVersion: PRECISION_SNAPPING_VERSION,
+  },
 });
 
 export const createPlainEnvelope = <T>(data: T): PlainEnvelope<T> => ({

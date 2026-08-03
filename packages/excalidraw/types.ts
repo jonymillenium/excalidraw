@@ -611,6 +611,8 @@ export type LibraryItem = {
   /** timestamp in epoch (ms) */
   created: number;
   name?: string;
+  /** User-defined hierarchy. Empty or undefined means library root. */
+  folderPath?: readonly string[];
   error?: string;
 };
 export type LibraryItems = readonly LibraryItem[];

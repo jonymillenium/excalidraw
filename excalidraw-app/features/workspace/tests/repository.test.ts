@@ -60,6 +60,26 @@ describe("IndexedDBWorkspaceRepository", () => {
       await repository.loadCanvas(created.project.id, copy.id),
     ).not.toBeNull();
 
+    await repository.saveProjectThumbnail(
+      created.project.id,
+      created.canvas.id,
+      "data:image/webp;base64,first",
+    );
+    await repository.saveProjectThumbnail(
+      created.project.id,
+      copy.id,
+      "data:image/webp;base64,copy",
+    );
+    expect(
+      await repository.getCanvasThumbnail(
+        created.project.id,
+        created.canvas.id,
+      ),
+    ).toBe("data:image/webp;base64,first");
+    expect(
+      await repository.getCanvasThumbnail(created.project.id, copy.id),
+    ).toBe("data:image/webp;base64,copy");
+
     await repository.deleteCanvas(created.project.id, second.id);
     expect(await repository.listCanvases(created.project.id)).toHaveLength(2);
     await repository.deleteProject(created.project.id);

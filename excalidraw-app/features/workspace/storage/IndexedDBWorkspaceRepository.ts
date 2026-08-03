@@ -25,6 +25,7 @@ import {
   type WorkspaceExport,
   type WorkspaceFileRecord,
   type WorkspaceSettings,
+  type WorkspaceThumbnailRecord,
 } from "../domain/types";
 
 import {
@@ -226,6 +227,15 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
     );
   }
 
+  private async getThumbnailRecords(projectId: string) {
+    const db = await this.database;
+    const transaction = db.transaction(STORES.thumbnails, "readonly");
+    const records = await requestToPromise<WorkspaceThumbnailRecord[]>(
+      transaction.objectStore(STORES.thumbnails).getAll(),
+    );
+    return records.filter((thumbnail) => thumbnail.projectId === projectId);
+  }
+
   private async getAllProjectData(projectId: string) {
     const project = await this.getProjectRecord(projectId);
     if (!project) {
@@ -263,15 +273,18 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
   async listProjects(): Promise<ProjectSummary[]> {
     const db = await this.database;
     const transaction = db.transaction(
-      [STORES.projects, STORES.canvases],
+      [STORES.projects, STORES.canvases, STORES.thumbnails],
       "readonly",
     );
-    const [projects, canvases] = await Promise.all([
+    const [projects, canvases, thumbnails] = await Promise.all([
       requestToPromise<ProjectRecord[]>(
         transaction.objectStore(STORES.projects).getAll(),
       ),
       requestToPromise<CanvasRecord[]>(
         transaction.objectStore(STORES.canvases).getAll(),
+      ),
+      requestToPromise<WorkspaceThumbnailRecord[]>(
+        transaction.objectStore(STORES.thumbnails).getAll(),
       ),
     ]);
     const canvasCount = new Map<string, number>();
@@ -281,6 +294,13 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
         (canvasCount.get(canvas.projectId) ?? 0) + 1,
       ),
     );
+    const thumbnailsByProject = new Map<string, WorkspaceThumbnailRecord>();
+    thumbnails.forEach((thumbnail) => {
+      const current = thumbnailsByProject.get(thumbnail.projectId);
+      if (!current || current.updatedAt < thumbnail.updatedAt) {
+        thumbnailsByProject.set(thumbnail.projectId, thumbnail);
+      }
+    });
     return sortByOrder(
       projects.map((project) => ({
         id: project.id,
@@ -291,6 +311,9 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
         order: project.order,
         protection: project.protection,
         canvasCount: canvasCount.get(project.id) ?? 0,
+        thumbnail: project.protection.enabled
+          ? undefined
+          : thumbnailsByProject.get(project.id)?.dataURL,
       })),
     );
   }
@@ -523,9 +546,10 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
 
   async deleteProject(id: string) {
     const { canvases, files } = await this.getAllProjectData(id);
+    const thumbnails = await this.getThumbnailRecords(id);
     const db = await this.database;
     const transaction = db.transaction(
-      [STORES.projects, STORES.canvases, STORES.files],
+      [STORES.projects, STORES.canvases, STORES.files, STORES.thumbnails],
       "readwrite",
     );
     transaction.objectStore(STORES.projects).delete(id);
@@ -536,6 +560,9 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
       transaction
         .objectStore(STORES.files)
         .delete([file.projectId, file.canvasId, file.id]),
+    );
+    thumbnails.forEach((thumbnail) =>
+      transaction.objectStore(STORES.thumbnails).delete(thumbnail.id),
     );
     await transactionToPromise(transaction);
   }
@@ -789,6 +816,59 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
         .filter((canvas) => canvas.id !== canvasId)
         .map((canvas) => canvas.id),
     );
+    const thumbnails = await this.getThumbnailRecords(projectId);
+    const thumbnailTransaction = db.transaction(STORES.thumbnails, "readwrite");
+    const thumbnailStore = thumbnailTransaction.objectStore(STORES.thumbnails);
+    thumbnails
+      .filter((thumbnail) => thumbnail.canvasId === canvasId)
+      .forEach((thumbnail) => thumbnailStore.delete(thumbnail.id));
+    await transactionToPromise(thumbnailTransaction);
+  }
+
+  async saveProjectThumbnail(
+    projectId: string,
+    canvasId: string,
+    dataURL?: string,
+  ) {
+    const [project, canvases] = await Promise.all([
+      this.getProjectRecord(projectId),
+      this.getCanvasRecords(projectId),
+    ]);
+    if (!project || !canvases.some((canvas) => canvas.id === canvasId)) {
+      return;
+    }
+    const existing =
+      !dataURL || project.protection.enabled
+        ? await this.getThumbnailRecords(projectId)
+        : [];
+    const db = await this.database;
+    const transaction = db.transaction(STORES.thumbnails, "readwrite");
+    const store = transaction.objectStore(STORES.thumbnails);
+    if (!dataURL || project.protection.enabled) {
+      existing
+        .filter(
+          (thumbnail) =>
+            thumbnail.projectId === projectId &&
+            thumbnail.canvasId === canvasId,
+        )
+        .forEach((thumbnail) => store.delete(thumbnail.id));
+    } else {
+      const thumbnail: WorkspaceThumbnailRecord = {
+        id: `${projectId}:${canvasId}`,
+        projectId,
+        canvasId,
+        dataURL,
+        updatedAt: Date.now(),
+      };
+      store.put(thumbnail);
+    }
+    await transactionToPromise(transaction);
+  }
+
+  async getCanvasThumbnail(projectId: string, canvasId: string) {
+    const records = await this.getThumbnailRecords(projectId);
+    return records.find((thumbnail) => thumbnail.canvasId === canvasId)
+      ?.dataURL;
   }
 
   async unlockProject(id: string, password: string) {
@@ -861,6 +941,13 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
       })),
     );
     await this.writeProjectData({ project, canvases, files });
+    const db = await this.database;
+    const thumbnails = await this.getThumbnailRecords(id);
+    const thumbnailTransaction = db.transaction(STORES.thumbnails, "readwrite");
+    thumbnails.forEach((thumbnail) =>
+      thumbnailTransaction.objectStore(STORES.thumbnails).delete(thumbnail.id),
+    );
+    await transactionToPromise(thumbnailTransaction);
     return key;
   }
 

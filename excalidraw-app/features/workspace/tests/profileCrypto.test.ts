@@ -17,9 +17,12 @@ describe("profile password protection", () => {
       1_000,
     );
 
-    await expect(
-      unlockProfile("profile-1", protection, "contraseña segura"),
-    ).resolves.toBeUndefined();
+    const key = await unlockProfile(
+      "profile-1",
+      protection,
+      "contraseña segura",
+    );
+    expect(key).toBeInstanceOf(CryptoKey);
   });
 
   it("rejects an incorrect password", async () => {

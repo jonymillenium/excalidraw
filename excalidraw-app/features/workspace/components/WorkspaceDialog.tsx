@@ -5,11 +5,13 @@ export const WorkspaceDialog = ({
   description,
   children,
   onClose,
+  size = "default",
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
   onClose: () => void;
+  size?: "default" | "wide";
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -54,7 +56,7 @@ export const WorkspaceDialog = ({
     <div className="workspace-dialog-backdrop" role="presentation">
       <div
         ref={dialogRef}
-        className="workspace-dialog"
+        className={`workspace-dialog workspace-dialog--${size}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-dialog-title"

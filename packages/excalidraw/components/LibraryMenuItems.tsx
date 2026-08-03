@@ -32,9 +32,10 @@ import "./LibraryMenuItems.scss";
 
 import { TextField } from "./TextField";
 
-import { useEditorInterface } from "./App";
+import { useApp, useEditorInterface } from "./App";
 
 import { Button } from "./Button";
+import { Dialog } from "./Dialog";
 
 import type { ExcalidrawLibraryIds } from "../data/types";
 
@@ -51,6 +52,21 @@ const ITEMS_RENDERED_PER_BATCH = 17;
 // when render outputs cached we can render many more items per batch to
 // speed it up
 const CACHED_ITEMS_RENDERED_PER_BATCH = 64;
+const LIBRARY_FOLDERS_STORAGE_KEY = "excalidraw-library-folders:v1";
+
+const folderPathKey = (path: readonly string[]) => path.join("\u001f");
+
+const sameFolderPath = (
+  first: readonly string[] | undefined,
+  second: readonly string[],
+) => folderPathKey(first ?? []) === folderPathKey(second);
+
+const normalizeFolderName = (name: string) =>
+  name
+    .trim()
+    .replace(/[\\/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
 
 export default function LibraryMenuItems({
   isLoading,
@@ -68,7 +84,11 @@ export default function LibraryMenuItems({
   libraryItems: LibraryItems;
   pendingElements: LibraryItem["elements"];
   onInsertLibraryItems: (libraryItems: LibraryItems) => void;
-  onAddToLibrary: (elements: LibraryItem["elements"]) => void;
+  onAddToLibrary: (
+    elements: LibraryItem["elements"],
+    name: string,
+    folderPath: readonly string[],
+  ) => void;
   libraryReturnUrl: ExcalidrawProps["libraryReturnUrl"];
   theme: UIAppState["theme"];
   id: string;
@@ -76,6 +96,7 @@ export default function LibraryMenuItems({
   onSelectItems: (id: LibraryItem["id"][]) => void;
 }) {
   const editorInterface = useEditorInterface();
+  const app = useApp();
   const libraryContainerRef = useRef<HTMLDivElement>(null);
   const scrollPosition = useScrollPosition<HTMLDivElement>(libraryContainerRef);
 
@@ -92,6 +113,75 @@ export default function LibraryMenuItems({
   >(null);
 
   const [searchInputValue, setSearchInputValue] = useState("");
+  const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
+  const [createdFolderPaths, setCreatedFolderPaths] = useState<string[][]>(
+    () => {
+      try {
+        const persisted = window.localStorage.getItem(
+          LIBRARY_FOLDERS_STORAGE_KEY,
+        );
+        const parsed = persisted ? JSON.parse(persisted) : [];
+        return Array.isArray(parsed)
+          ? parsed.filter(
+              (path): path is string[] =>
+                Array.isArray(path) &&
+                path.every((part) => typeof part === "string"),
+            )
+          : [];
+      } catch {
+        return [];
+      }
+    },
+  );
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [assetName, setAssetName] = useState("");
+  const [showFolderDialog, setShowFolderDialog] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [renameItemId, setRenameItemId] = useState<LibraryItem["id"] | null>(
+    null,
+  );
+  const [renameItemName, setRenameItemName] = useState("");
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        LIBRARY_FOLDERS_STORAGE_KEY,
+        JSON.stringify(createdFolderPaths),
+      );
+    } catch {
+      // Folder paths on items remain the portable source of truth.
+    }
+  }, [createdFolderPaths]);
+
+  const allFolderPaths = useMemo(() => {
+    const folders = new Map<string, string[]>();
+    for (const path of createdFolderPaths) {
+      folders.set(folderPathKey(path), path);
+    }
+    for (const item of libraryItems) {
+      const path = item.folderPath ?? [];
+      for (let depth = 1; depth <= path.length; depth++) {
+        const prefix = path.slice(0, depth);
+        folders.set(folderPathKey(prefix), [...prefix]);
+      }
+    }
+    return [...folders.values()];
+  }, [createdFolderPaths, libraryItems]);
+
+  const childFolders = useMemo(() => {
+    const names = new Set<string>();
+    for (const path of allFolderPaths) {
+      if (
+        path.length > activeFolderPath.length &&
+        activeFolderPath.every((part, index) => path[index] === part)
+      ) {
+        names.add(path[activeFolderPath.length]);
+      }
+    }
+    return [...names].sort((first, second) =>
+      first.localeCompare(second, undefined, { sensitivity: "base" }),
+    );
+  }, [activeFolderPath, allFolderPaths]);
 
   const IS_LIBRARY_EMPTY = !libraryItems.length && !pendingElements.length;
 
@@ -105,20 +195,31 @@ export default function LibraryMenuItems({
 
     return libraryItems.filter((item) => {
       const itemName = item.name || "";
-      return (
-        itemName.trim() && deburr(itemName.toLowerCase()).includes(searchQuery)
+      const folderName = (item.folderPath ?? []).join(" / ");
+      return deburr(`${itemName} ${folderName}`.toLowerCase()).includes(
+        searchQuery,
       );
     });
   }, [libraryItems, searchInputValue]);
 
   const unpublishedItems = useMemo(
-    () => libraryItems.filter((item) => item.status !== "published"),
-    [libraryItems],
+    () =>
+      libraryItems.filter(
+        (item) =>
+          item.status !== "published" &&
+          sameFolderPath(item.folderPath, activeFolderPath),
+      ),
+    [activeFolderPath, libraryItems],
   );
 
   const publishedItems = useMemo(
-    () => libraryItems.filter((item) => item.status === "published"),
-    [libraryItems],
+    () =>
+      libraryItems.filter(
+        (item) =>
+          item.status === "published" &&
+          sameFolderPath(item.folderPath, activeFolderPath),
+      ),
+    [activeFolderPath, libraryItems],
   );
 
   const onItemSelectToggle = useCallback(
@@ -233,8 +334,49 @@ export default function LibraryMenuItems({
   );
 
   const onAddToLibraryClick = useCallback(() => {
-    onAddToLibrary(pendingElements);
-  }, [pendingElements, onAddToLibrary]);
+    setAssetName(
+      `${t("library.naming.defaultName")} ${libraryItems.length + 1}`,
+    );
+    setShowNameDialog(true);
+  }, [libraryItems.length]);
+
+  const createFolder = useCallback(() => {
+    setFolderName("");
+    setShowFolderDialog(true);
+  }, []);
+
+  const moveSelectedHere = useCallback(() => {
+    if (!selectedItems.length) {
+      return;
+    }
+    void app.library
+      .setLibrary(
+        libraryItems.map((item) =>
+          selectedItems.includes(item.id)
+            ? { ...item, folderPath: [...activeFolderPath] }
+            : item,
+        ),
+      )
+      .then(() => onSelectItems([]));
+  }, [
+    activeFolderPath,
+    app.library,
+    libraryItems,
+    onSelectItems,
+    selectedItems,
+  ]);
+
+  const renameSelected = useCallback(() => {
+    if (selectedItems.length !== 1) {
+      return;
+    }
+    const selected = libraryItems.find((item) => item.id === selectedItems[0]);
+    if (!selected) {
+      return;
+    }
+    setRenameItemId(selected.id);
+    setRenameItemName(selected.name ?? "");
+  }, [libraryItems, selectedItems]);
 
   const onItemClick = useCallback(
     (id: LibraryItem["id"] | null) => {
@@ -245,11 +387,17 @@ export default function LibraryMenuItems({
     [getInsertedElements, onInsertLibraryItems],
   );
 
+  const visibleItemCount = filteredItems.length
+    ? filteredItems.length
+    : unpublishedItems.length + publishedItems.length;
   const itemsRenderedPerBatch =
-    svgCache.size >=
-    (filteredItems.length ? filteredItems : libraryItems).length
+    svgCache.size >= visibleItemCount
       ? CACHED_ITEMS_RENDERED_PER_BATCH
       : ITEMS_RENDERED_PER_BATCH;
+  const canMoveSelectionHere = selectedItems.some((selectedId) => {
+    const item = libraryItems.find((candidate) => candidate.id === selectedId);
+    return item && !sameFolderPath(item.folderPath, activeFolderPath);
+  });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -261,12 +409,68 @@ export default function LibraryMenuItems({
 
   const JSX_whenNotSearching = !IS_SEARCHING && (
     <>
+      <div className="library-folders-toolbar">
+        <div className="library-folder-breadcrumbs" aria-label="Carpeta actual">
+          <button type="button" onClick={() => setActiveFolderPath([])}>
+            {t("library.folders.root")}
+          </button>
+          {activeFolderPath.map((folder, index) => (
+            <React.Fragment
+              key={folderPathKey(activeFolderPath.slice(0, index + 1))}
+            >
+              <span>/</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveFolderPath(activeFolderPath.slice(0, index + 1))
+                }
+              >
+                {folder}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+        <div className="library-folder-actions">
+          <button type="button" onClick={createFolder}>
+            + {t("library.folders.new")}
+          </button>
+          {canMoveSelectionHere && (
+            <button type="button" onClick={moveSelectedHere}>
+              {t("library.folders.moveHere")} ({selectedItems.length})
+            </button>
+          )}
+          {selectedItems.length === 1 && (
+            <button type="button" onClick={renameSelected}>
+              {t("library.folders.rename")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!!childFolders.length && (
+        <div className="library-folder-grid">
+          {childFolders.map((folder) => (
+            <button
+              key={folder}
+              type="button"
+              className="library-folder-card"
+              onClick={() => setActiveFolderPath([...activeFolderPath, folder])}
+            >
+              <span aria-hidden="true">▰</span>
+              <strong>{folder}</strong>
+            </button>
+          ))}
+        </div>
+      )}
+
       {!IS_LIBRARY_EMPTY && (
         <div className="library-menu-items-container__header">
           {t("labels.personalLib")}
         </div>
       )}
-      {!pendingElements.length && !unpublishedItems.length ? (
+      {!pendingElements.length &&
+      !unpublishedItems.length &&
+      !childFolders.length ? (
         <div className="library-menu-items__no-items">
           {!publishedItems.length && (
             <div className="library-menu-items__no-items__label">
@@ -276,6 +480,8 @@ export default function LibraryMenuItems({
           <div className="library-menu-items__no-items__hint">
             {publishedItems.length > 0
               ? t("library.hint_emptyPrivateLibrary")
+              : activeFolderPath.length
+              ? t("library.folders.empty")
               : t("library.hint_emptyLibrary")}
           </div>
         </div>
@@ -410,10 +616,7 @@ export default function LibraryMenuItems({
         className="library-menu-items-container__items"
         align="start"
         gap={1}
-        style={{
-          flex: publishedItems.length > 0 ? 1 : "0 1 auto",
-          margin: IS_LIBRARY_EMPTY ? "auto" : 0,
-        }}
+        style={{ flex: 1, margin: 0 }}
         ref={libraryContainerRef}
       >
         {isLoading && (
@@ -441,6 +644,148 @@ export default function LibraryMenuItems({
           />
         )}
       </Stack.Col>
+      {showNameDialog && (
+        <Dialog
+          title={t("library.naming.prompt")}
+          size="small"
+          onCloseRequest={() => setShowNameDialog(false)}
+        >
+          <form
+            className="library-name-dialog"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!assetName.trim()) {
+                return;
+              }
+              onAddToLibrary(
+                pendingElements,
+                assetName.trim(),
+                activeFolderPath,
+              );
+              setShowNameDialog(false);
+            }}
+          >
+            <label>
+              {t("library.naming.prompt")}
+              <input
+                autoFocus
+                value={assetName}
+                onChange={(event) => setAssetName(event.target.value)}
+                maxLength={120}
+                required
+              />
+            </label>
+            <p>
+              {activeFolderPath.length
+                ? activeFolderPath.join(" / ")
+                : t("library.folders.root")}
+            </p>
+            <div>
+              <button type="button" onClick={() => setShowNameDialog(false)}>
+                {t("buttons.cancel")}
+              </button>
+              <button type="submit" disabled={!assetName.trim()}>
+                {t("library.naming.add")}
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+      {showFolderDialog && (
+        <Dialog
+          title={t("library.folders.prompt")}
+          size="small"
+          onCloseRequest={() => setShowFolderDialog(false)}
+        >
+          <form
+            className="library-name-dialog"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const normalizedName = normalizeFolderName(folderName);
+              if (!normalizedName) {
+                return;
+              }
+              const path = [...activeFolderPath, normalizedName];
+              setCreatedFolderPaths((current) => {
+                const key = folderPathKey(path);
+                return current.some((folder) => folderPathKey(folder) === key)
+                  ? current
+                  : [...current, path];
+              });
+              setActiveFolderPath(path);
+              setShowFolderDialog(false);
+            }}
+          >
+            <label>
+              {t("library.folders.prompt")}
+              <input
+                autoFocus
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
+                maxLength={80}
+                required
+              />
+            </label>
+            <p>
+              {activeFolderPath.length
+                ? activeFolderPath.join(" / ")
+                : t("library.folders.root")}
+            </p>
+            <div>
+              <button type="button" onClick={() => setShowFolderDialog(false)}>
+                {t("buttons.cancel")}
+              </button>
+              <button type="submit" disabled={!folderName.trim()}>
+                {t("library.folders.create")}
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+      {renameItemId && (
+        <Dialog
+          title={t("library.naming.rename")}
+          size="small"
+          onCloseRequest={() => setRenameItemId(null)}
+        >
+          <form
+            className="library-name-dialog"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!renameItemName.trim()) {
+                return;
+              }
+              void app.library.setLibrary(
+                libraryItems.map((item) =>
+                  item.id === renameItemId
+                    ? { ...item, name: renameItemName.trim() }
+                    : item,
+                ),
+              );
+              setRenameItemId(null);
+            }}
+          >
+            <label>
+              {t("library.naming.prompt")}
+              <input
+                autoFocus
+                value={renameItemName}
+                onChange={(event) => setRenameItemName(event.target.value)}
+                maxLength={120}
+                required
+              />
+            </label>
+            <div>
+              <button type="button" onClick={() => setRenameItemId(null)}>
+                {t("buttons.cancel")}
+              </button>
+              <button type="submit" disabled={!renameItemName.trim()}>
+                {t("library.folders.rename")}
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
     </div>
   );
 }

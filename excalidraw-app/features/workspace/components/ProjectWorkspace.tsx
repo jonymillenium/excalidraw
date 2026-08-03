@@ -1,17 +1,55 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
-import { THEME } from "@excalidraw/common";
+import {
+  Excalidraw,
+  MainMenu,
+  TTDDialog,
+  TTDDialogTrigger,
+  WelcomeScreen,
+} from "@excalidraw/excalidraw";
+import {
+  THEME,
+  randomId,
+  viewportCoordsToSceneCoords,
+} from "@excalidraw/common";
+import {
+  CaptureUpdateAction,
+  newElement,
+  newElementWith,
+  newImageElement,
+  newTextElement,
+} from "@excalidraw/element";
+import { RequestError } from "@excalidraw/excalidraw/errors";
 
-import type { Theme } from "@excalidraw/element/types";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type {
+  ExcalidrawElement,
+  FileId,
+  GroupId,
+  Theme,
+} from "@excalidraw/element/types";
+import type {
+  AppState,
+  BinaryFileData,
+  BinaryFiles,
+  DataURL,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+import type { OrderedExcalidrawElement } from "@excalidraw/element/types";
 
 import {
   captureVisibleRect,
   createSavedView,
-  moveSavedView,
+  moveSavedViewWithinFolder,
   normalizeViewOrder,
 } from "../domain/views";
+import { getInitialEditorAppState } from "../domain/editorFeatures";
+import { normalizeCanvasColorProfiles } from "../domain/canvasColors";
+import {
+  createWorkspaceReferenceLink,
+  parseWorkspaceReferenceLink,
+  type WorkspaceReferenceTarget,
+} from "../domain/references";
+import { TTDIndexedDBAdapter } from "../../../data/TTDStorage";
 
 import { useAutosaveCanvas, type SaveStatus } from "../hooks/useAutosaveCanvas";
 import {
@@ -20,41 +58,89 @@ import {
 } from "../services/canvasExport";
 import { CanvasLease } from "../services/canvasLease";
 import { downloadProject } from "../services/projectTransfer";
+import { generateMermaidWithOpenRouter } from "../services/openRouter";
 
 import { SavedViewDialog } from "./SavedViewDialog";
+import { CanvasColorProfilesDialog } from "./CanvasColorProfilesDialog";
+import { OpenRouterDialog } from "./OpenRouterDialog";
+import { WorkspaceReferencesDialog } from "./WorkspaceReferencesDialog";
+import { useWorkspacePrompts } from "./WorkspacePromptDialog";
 
 import type {
   CanvasSummary,
+  CanvasColorProfile,
   LoadedCanvas,
+  ProfileProtection,
   ProjectDetails,
   SavedView,
 } from "../domain/types";
 
 import type { WorkspaceRepository } from "../storage/WorkspaceRepository";
 
+const folderPathKey = (path: readonly string[]) => path.join("\u001f");
+
+const sameFolderPath = (
+  first: readonly string[] | undefined,
+  second: readonly string[],
+) => folderPathKey(first ?? []) === folderPathKey(second);
+
+const normalizeFolderPath = (value: string) =>
+  value
+    .split(/[\\/]+/)
+    .map((part) => part.trim().replace(/\s+/g, " ").slice(0, 80))
+    .filter(Boolean);
+
+const withFolderPrefixes = (folders: string[][], path: string[]) => {
+  const next = new Map(
+    folders.map((folder) => [folderPathKey(folder), folder]),
+  );
+  for (let depth = 1; depth <= path.length; depth++) {
+    const prefix = path.slice(0, depth);
+    next.set(folderPathKey(prefix), prefix);
+  }
+  return [...next.values()];
+};
+
 const EditorCanvas = ({
   repository,
   projectId,
   loadedCanvas,
   projectKey,
+  profileId,
+  profileKey,
   views,
+  viewFolders,
+  colorProfiles,
   readOnly,
   presentation,
   onAPI,
   onFlush,
   onStatus,
+  onOpenReference,
 }: {
   repository: WorkspaceRepository;
   projectId: string;
   loadedCanvas: LoadedCanvas;
   projectKey?: CryptoKey;
+  profileId: string;
+  profileKey?: CryptoKey;
   views: SavedView[];
+  viewFolders: string[][];
+  colorProfiles: Array<CanvasColorProfile | null>;
   readOnly: boolean;
   presentation: boolean;
   onAPI: (api: ExcalidrawImperativeAPI | null) => void;
   onFlush: (flush: () => Promise<void>) => void;
   onStatus: (status: SaveStatus, error?: Error) => void;
+  onOpenReference: (target: WorkspaceReferenceTarget) => void;
 }) => {
+  const [editorApi, setEditorApi] = useState<ExcalidrawImperativeAPI | null>(
+    null,
+  );
+  const [sketchElementIds, setSketchElementIds] = useState<string[]>([]);
+  const knownElementIdsRef = useRef(
+    new Set(loadedCanvas.payload.elements.map((element) => element.id)),
+  );
   const [themePreference, setThemePreference] = useState<Theme | "system">(
     "system",
   );
@@ -70,6 +156,8 @@ const EditorCanvas = ({
     canvasId: loadedCanvas.id,
     key: projectKey,
     views,
+    viewFolders,
+    colorProfiles,
     disabled: readOnly,
     onStatusChange: onStatus,
   });
@@ -78,69 +166,218 @@ const EditorCanvas = ({
     onFlush(flush);
   }, [flush, onFlush]);
 
-  return (
-    <Excalidraw
-      key={loadedCanvas.id}
-      name={loadedCanvas.name}
-      initialData={{
-        elements: loadedCanvas.payload.elements,
-        appState: loadedCanvas.payload.appState,
-        files: loadedCanvas.files,
-      }}
-      onChange={schedule}
-      onExcalidrawAPI={onAPI}
-      viewModeEnabled={presentation || readOnly}
-      zenModeEnabled={presentation}
-      activeTool={presentation ? { type: "laser" } : undefined}
-      interaction={
-        presentation
-          ? {
-              enabled: {
-                links: true,
-                navigation: true,
-                tools: { laser: true },
-              },
-            }
-          : !readOnly
+  useEffect(() => {
+    knownElementIdsRef.current = new Set(
+      loadedCanvas.payload.elements.map((element) => element.id),
+    );
+    setSketchElementIds([]);
+  }, [loadedCanvas.id, loadedCanvas.payload.elements]);
+
+  const handleSceneChange = useCallback(
+    (
+      elements: readonly OrderedExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles,
+    ) => {
+      schedule(elements, appState, files);
+      if (readOnly || presentation) {
+        return;
       }
-      theme={theme}
-      onThemeChange={setThemePreference}
-      autoFocus={!presentation}
-      UIOptions={{
-        canvasActions: {
-          toggleTheme: true,
-          export: { saveFileToDisk: true },
-          loadScene: true,
-          saveToActiveFile: true,
-          changeViewBackgroundColor: true,
+      const newFreedrawIds: string[] = [];
+      for (const element of elements) {
+        if (
+          !knownElementIdsRef.current.has(element.id) &&
+          !element.isDeleted &&
+          element.type === "freedraw"
+        ) {
+          newFreedrawIds.push(element.id);
+        }
+        knownElementIdsRef.current.add(element.id);
+      }
+      if (newFreedrawIds.length) {
+        setSketchElementIds((current) => [
+          ...new Set([...current, ...newFreedrawIds]),
+        ]);
+      }
+    },
+    [presentation, readOnly, schedule],
+  );
+
+  const finishSketch = useCallback(
+    (asGroup: boolean) => {
+      if (!editorApi || !sketchElementIds.length) {
+        return;
+      }
+      const sketchIds = new Set(sketchElementIds);
+      const groupId = asGroup ? randomId() : null;
+      const elements = editorApi
+        .getSceneElementsIncludingDeleted()
+        .map((element) =>
+          groupId && sketchIds.has(element.id)
+            ? newElementWith(element, {
+                groupIds: [...element.groupIds, groupId],
+              })
+            : element,
+        );
+      const selectedElementIds = Object.fromEntries(
+        sketchElementIds.map((id) => [id, true as const]),
+      );
+      editorApi.updateScene({
+        elements,
+        appState: {
+          ...editorApi.getAppState(),
+          selectedElementIds,
+          selectedGroupIds: groupId ? { [groupId]: true } : {},
         },
-      }}
-    >
-      {!presentation && (
-        <MainMenu>
-          <MainMenu.DefaultItems.LoadScene />
-          <MainMenu.DefaultItems.SaveToActiveFile />
-          <MainMenu.DefaultItems.SaveAsImage />
-          <MainMenu.DefaultItems.Export />
-          <MainMenu.Separator />
-          <MainMenu.DefaultItems.ToggleTheme
-            allowSystemTheme={true}
-            theme={themePreference}
-          />
-          <MainMenu.DefaultItems.ChangeCanvasBackground />
-          <MainMenu.DefaultItems.ClearCanvas />
-        </MainMenu>
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      editorApi.setActiveTool({ type: "selection" });
+      setSketchElementIds([]);
+    },
+    [editorApi, sketchElementIds],
+  );
+
+  return (
+    <div className="editor-canvas-shell">
+      <Excalidraw
+        key={loadedCanvas.id}
+        name={loadedCanvas.name}
+        initialData={{
+          elements: loadedCanvas.payload.elements,
+          appState: getInitialEditorAppState(loadedCanvas.payload),
+          files: loadedCanvas.files,
+        }}
+        onChange={handleSceneChange}
+        onExcalidrawAPI={(nextApi) => {
+          setEditorApi(nextApi);
+          onAPI(nextApi);
+        }}
+        viewModeEnabled={presentation || readOnly}
+        zenModeEnabled={presentation}
+        activeTool={presentation ? { type: "laser" } : undefined}
+        interaction={
+          presentation
+            ? {
+                enabled: {
+                  links: true,
+                  navigation: true,
+                  tools: { laser: true },
+                },
+              }
+            : !readOnly
+        }
+        theme={theme}
+        onThemeChange={setThemePreference}
+        onLinkOpen={(element, event) => {
+          const reference = parseWorkspaceReferenceLink(element.link);
+          if (reference) {
+            event.preventDefault();
+            onOpenReference(reference);
+          }
+        }}
+        autoFocus={!presentation}
+        UIOptions={{
+          canvasActions: {
+            toggleTheme: true,
+            export: { saveFileToDisk: true },
+            loadScene: true,
+            saveToActiveFile: true,
+            changeViewBackgroundColor: true,
+          },
+        }}
+      >
+        {!presentation && (
+          <MainMenu>
+            <MainMenu.DefaultItems.LoadScene />
+            <MainMenu.DefaultItems.SaveToActiveFile />
+            <MainMenu.DefaultItems.SaveAsImage />
+            <MainMenu.DefaultItems.Export />
+            <MainMenu.Separator />
+            <MainMenu.DefaultItems.Preferences />
+            <MainMenu.DefaultItems.ToggleTheme
+              allowSystemTheme={true}
+              theme={themePreference}
+            />
+            <MainMenu.DefaultItems.ChangeCanvasBackground />
+            <MainMenu.DefaultItems.ClearCanvas />
+          </MainMenu>
+        )}
+        {!loadedCanvas.payload.elements.length && !presentation && (
+          <WelcomeScreen>
+            <WelcomeScreen.Center>
+              <WelcomeScreen.Center.Heading>
+                Empieza a dibujar en {loadedCanvas.name}
+              </WelcomeScreen.Center.Heading>
+            </WelcomeScreen.Center>
+          </WelcomeScreen>
+        )}
+        {!presentation && (
+          <>
+            <TTDDialogTrigger />
+            <TTDDialog
+              persistenceAdapter={TTDIndexedDBAdapter}
+              onTextSubmit={async ({ messages, onChunk, onStreamCreated }) => {
+                if (!profileKey) {
+                  return {
+                    generatedResponse: null,
+                    error: new RequestError({
+                      message:
+                        "Desbloquea el perfil y configura OpenRouter para generar diagramas.",
+                      status: 401,
+                    }),
+                  };
+                }
+                try {
+                  onStreamCreated?.();
+                  const generatedResponse = await generateMermaidWithOpenRouter(
+                    {
+                      repository,
+                      profileId,
+                      profileKey,
+                      messages,
+                    },
+                  );
+                  onChunk?.(generatedResponse);
+                  return { generatedResponse, error: null };
+                } catch (generationError) {
+                  return {
+                    generatedResponse: null,
+                    error: new RequestError({
+                      message:
+                        generationError instanceof Error
+                          ? generationError.message
+                          : "No se pudo generar el diagrama.",
+                      status: 500,
+                    }),
+                  };
+                }
+              }}
+            />
+          </>
+        )}
+      </Excalidraw>
+      {!!sketchElementIds.length && !presentation && (
+        <div className="sketch-finish-bar" role="status">
+          <div>
+            <strong>Sketch en curso</strong>
+            <span>
+              {sketchElementIds.length}{" "}
+              {sketchElementIds.length === 1 ? "trazo" : "trazos"}
+            </span>
+          </div>
+          <button type="button" onClick={() => finishSketch(false)}>
+            Dejar individuales
+          </button>
+          <button
+            type="button"
+            className="sketch-finish-bar__primary"
+            onClick={() => finishSketch(true)}
+          >
+            Guardar como grupo
+          </button>
+        </div>
       )}
-      {!loadedCanvas.payload.elements.length && !presentation && (
-        <WelcomeScreen>
-          <WelcomeScreen.Center>
-            <WelcomeScreen.Center.Heading>
-              Empieza a dibujar en {loadedCanvas.name}
-            </WelcomeScreen.Center.Heading>
-          </WelcomeScreen.Center>
-        </WelcomeScreen>
-      )}
-    </Excalidraw>
+    </div>
   );
 };
 
@@ -148,18 +385,36 @@ export const ProjectWorkspace = ({
   repository,
   projectId,
   canvasId,
+  targetViewId,
   projectKey,
+  profileId,
+  profileName,
+  profileProtection,
+  profileKey,
+  onVerifyProfilePassword,
   onBack,
   onNavigateCanvas,
+  onNavigateReference,
   onLock,
   onProjectChanged,
 }: {
   repository: WorkspaceRepository;
   projectId: string;
   canvasId: string;
+  targetViewId?: string;
   projectKey?: CryptoKey;
+  profileId: string;
+  profileName: string;
+  profileProtection: ProfileProtection;
+  profileKey?: CryptoKey;
+  onVerifyProfilePassword: (password: string) => Promise<CryptoKey>;
   onBack: () => void;
   onNavigateCanvas: (canvasId: string) => void;
+  onNavigateReference: (
+    projectId: string,
+    canvasId: string,
+    viewId?: string,
+  ) => void;
   onLock: () => void;
   onProjectChanged: () => void;
 }) => {
@@ -167,6 +422,21 @@ export const ProjectWorkspace = ({
   const [canvases, setCanvases] = useState<CanvasSummary[]>([]);
   const [loadedCanvas, setLoadedCanvas] = useState<LoadedCanvas | null>(null);
   const [views, setViews] = useState<SavedView[]>([]);
+  const [viewFolders, setViewFolders] = useState<string[][]>([]);
+  const [activeViewFolderPath, setActiveViewFolderPath] = useState<string[]>(
+    [],
+  );
+  const [colorProfiles, setColorProfiles] = useState<
+    Array<CanvasColorProfile | null>
+  >(() => normalizeCanvasColorProfiles());
+  const [showColorProfiles, setShowColorProfiles] = useState(false);
+  const [showOpenRouter, setShowOpenRouter] = useState(false);
+  const [referenceDialog, setReferenceDialog] = useState<
+    | { mode: "browse" }
+    | { mode: "preview"; target: WorkspaceReferenceTarget }
+    | null
+  >(null);
+  const [activeProfileKey, setActiveProfileKey] = useState(profileKey);
   const [selectedViewId, setSelectedViewId] = useState<string>();
   const [viewDialog, setViewDialog] = useState<
     { mode: "create" } | { mode: "edit"; view: SavedView } | null
@@ -180,9 +450,13 @@ export const ProjectWorkspace = ({
   const [error, setError] = useState<string>();
   const [readOnly, setReadOnly] = useState(false);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
+  const { askText, askConfirm, promptDialog } = useWorkspacePrompts();
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
   const criticalSaveRef = useRef<Promise<void>>(Promise.resolve());
   const leaseRef = useRef(new CanvasLease());
+  const openedTargetViewRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => setActiveProfileKey(profileKey), [profileKey]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 700px)");
@@ -235,6 +509,11 @@ export const ProjectWorkspace = ({
           setReadOnly(!ownsLease);
           setLoadedCanvas(nextCanvas);
           setViews(normalizeViewOrder(nextCanvas.payload.views));
+          setViewFolders(nextCanvas.payload.viewFolders ?? []);
+          setActiveViewFolderPath([]);
+          setColorProfiles(
+            normalizeCanvasColorProfiles(nextCanvas.payload.colorProfiles),
+          );
           setSelectedViewId(undefined);
         }
       })
@@ -266,7 +545,7 @@ export const ProjectWorkspace = ({
   }, []);
 
   const persistViews = useCallback(
-    async (nextViews: SavedView[]) => {
+    async (nextViews: SavedView[], nextViewFolders = viewFolders) => {
       if (!api || !loadedCanvas || readOnly) {
         return;
       }
@@ -278,20 +557,31 @@ export const ProjectWorkspace = ({
           projectId,
           loadedCanvas.id,
           {
+            ...loadedCanvas.payload,
             elements: api.getSceneElementsIncludingDeleted(),
             appState: api.getAppState(),
             fileIds: Object.keys(
               api.getFiles(),
             ) as LoadedCanvas["payload"]["fileIds"],
             views: nextViews,
+            viewFolders: nextViewFolders,
+            colorProfiles,
           },
           api.getFiles(),
           projectKey,
         );
         setViews(nextViews);
+        setViewFolders(nextViewFolders);
         setLoadedCanvas((current) =>
           current
-            ? { ...current, payload: { ...current.payload, views: nextViews } }
+            ? {
+                ...current,
+                payload: {
+                  ...current.payload,
+                  views: nextViews,
+                  viewFolders: nextViewFolders,
+                },
+              }
             : current,
         );
         setSaveStatus("saved");
@@ -308,7 +598,103 @@ export const ProjectWorkspace = ({
         );
       }
     },
-    [api, loadedCanvas, projectId, projectKey, readOnly, repository],
+    [
+      api,
+      colorProfiles,
+      loadedCanvas,
+      projectId,
+      projectKey,
+      readOnly,
+      repository,
+      viewFolders,
+    ],
+  );
+
+  const persistColorProfiles = useCallback(
+    async (
+      nextProfiles: Array<CanvasColorProfile | null>,
+      profileToApply?: CanvasColorProfile,
+      applyToExistingElements = false,
+    ) => {
+      if (!api || !loadedCanvas || readOnly) {
+        return;
+      }
+      const normalizedProfiles = normalizeCanvasColorProfiles(nextProfiles);
+      const appState = profileToApply
+        ? {
+            ...api.getAppState(),
+            viewBackgroundColor: profileToApply.backgroundColor,
+            currentItemStrokeColor: profileToApply.elementColor,
+          }
+        : api.getAppState();
+      const elements =
+        profileToApply && applyToExistingElements
+          ? api.getSceneElementsIncludingDeleted().map((element) =>
+              "strokeColor" in element
+                ? newElementWith(element, {
+                    strokeColor: profileToApply.elementColor,
+                  })
+                : element,
+            )
+          : api.getSceneElementsIncludingDeleted();
+
+      if (profileToApply) {
+        api.updateScene({
+          elements,
+          appState,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+      }
+
+      const previousSave = criticalSaveRef.current;
+      const operation = previousSave.then(async () => {
+        await flushRef.current();
+        setSaveStatus("saving");
+        await repository.saveCanvas(
+          projectId,
+          loadedCanvas.id,
+          {
+            ...loadedCanvas.payload,
+            elements,
+            appState,
+            fileIds: Object.keys(
+              api.getFiles(),
+            ) as LoadedCanvas["payload"]["fileIds"],
+            views,
+            viewFolders,
+            colorProfiles: normalizedProfiles,
+          },
+          api.getFiles(),
+          projectKey,
+        );
+        setColorProfiles(normalizedProfiles);
+        setLoadedCanvas((current) =>
+          current
+            ? {
+                ...current,
+                payload: {
+                  ...current.payload,
+                  appState,
+                  colorProfiles: normalizedProfiles,
+                },
+              }
+            : current,
+        );
+        setSaveStatus("saved");
+      });
+      criticalSaveRef.current = operation.catch(() => undefined);
+      await operation;
+    },
+    [
+      api,
+      loadedCanvas,
+      projectId,
+      projectKey,
+      readOnly,
+      repository,
+      viewFolders,
+      views,
+    ],
   );
 
   const flushAll = useCallback(async () => {
@@ -334,6 +720,24 @@ export const ProjectWorkspace = ({
     },
     [api],
   );
+
+  useEffect(() => {
+    if (!targetViewId) {
+      openedTargetViewRef.current = undefined;
+      return;
+    }
+    if (!api || openedTargetViewRef.current === targetViewId) {
+      return;
+    }
+    const target = views.find((view) => view.id === targetViewId);
+    if (!target) {
+      setError("La vista vinculada ya no existe en este lienzo.");
+      openedTargetViewRef.current = targetViewId;
+      return;
+    }
+    openedTargetViewRef.current = targetViewId;
+    openView(target);
+  }, [api, openView, targetViewId, views]);
 
   useEffect(() => {
     if (presentationIndex === null) {
@@ -388,6 +792,121 @@ export const ProjectWorkspace = ({
     );
   };
 
+  const insertWorkspaceReference = ({
+    target,
+    projectName,
+    canvasName,
+    viewName,
+    thumbnail,
+  }: {
+    target: WorkspaceReferenceTarget;
+    projectName: string;
+    canvasName?: string;
+    viewName?: string;
+    thumbnail?: string;
+  }) => {
+    if (!api || readOnly) {
+      return;
+    }
+    const appState = api.getAppState();
+    const center = viewportCoordsToSceneCoords(
+      { clientX: appState.width / 2, clientY: appState.height / 2 },
+      appState,
+    );
+    const width = 360;
+    const height = 220;
+    const x = center.x - width / 2;
+    const y = center.y - height / 2;
+    const groupId = randomId() as GroupId;
+    const link = createWorkspaceReferenceLink(target);
+    const common = {
+      groupIds: [groupId],
+      link,
+      customData: { workspaceReference: target },
+    };
+    const card = newElement({
+      type: "rectangle",
+      x,
+      y,
+      width,
+      height,
+      strokeColor: "#ffd43b",
+      backgroundColor: "#19191f",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 0,
+      roundness: { type: 3 },
+      ...common,
+    });
+    const elements: ExcalidrawElement[] = [card];
+    if (thumbnail) {
+      const fileId = randomId() as FileId;
+      api.addFiles([
+        {
+          id: fileId,
+          dataURL: thumbnail as DataURL,
+          mimeType: (thumbnail.match(/^data:([^;]+)/)?.[1] ??
+            "image/webp") as BinaryFileData["mimeType"],
+          created: Date.now(),
+        },
+      ]);
+      elements.push(
+        newImageElement({
+          type: "image",
+          x: x + 8,
+          y: y + 8,
+          width: width - 16,
+          height: 146,
+          fileId,
+          status: "saved",
+          roundness: { type: 3 },
+          ...common,
+        }),
+      );
+    }
+    elements.push(
+      newTextElement({
+        x: x + 18,
+        y: y + 168,
+        text:
+          target.kind === "project"
+            ? projectName
+            : target.kind === "view"
+            ? viewName ?? "Vista"
+            : canvasName ?? "Lienzo",
+        fontSize: 20,
+        strokeColor: "#ffffff",
+        ...common,
+      }),
+      newTextElement({
+        x: x + 18,
+        y: y + 198,
+        text:
+          target.kind === "project"
+            ? canvasName ?? "Proyecto vinculado"
+            : target.kind === "view"
+            ? `${projectName} · ${canvasName ?? "Lienzo"}`
+            : projectName,
+        fontSize: 12,
+        strokeColor: "#a7a7b5",
+        ...common,
+      }),
+    );
+    api.updateScene({
+      elements: [...api.getSceneElementsIncludingDeleted(), ...elements],
+      appState: {
+        ...appState,
+        selectedElementIds: Object.fromEntries(
+          elements.map((element) => [element.id, true]),
+        ),
+        selectedGroupIds: { [groupId]: true },
+      },
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    api.setActiveTool({ type: "selection" });
+    setReferenceDialog(null);
+  };
+
   const handleCanvasExport = async (format: CanvasExportFormat) => {
     if (!api) {
       return;
@@ -422,6 +941,28 @@ export const ProjectWorkspace = ({
   }
 
   const presentation = presentationIndex !== null;
+  const availableViewFolders = (() => {
+    let folders = viewFolders;
+    for (const view of views) {
+      if (view.folderPath?.length) {
+        folders = withFolderPrefixes(folders, view.folderPath);
+      }
+    }
+    return folders;
+  })();
+  const childViewFolders = [
+    ...new Set(
+      availableViewFolders.flatMap((path) =>
+        path.length > activeViewFolderPath.length &&
+        activeViewFolderPath.every((part, index) => path[index] === part)
+          ? [path[activeViewFolderPath.length]]
+          : [],
+      ),
+    ),
+  ].sort((first, second) => first.localeCompare(second));
+  const visibleViews = views.filter((view) =>
+    sameFolderPath(view.folderPath, activeViewFolderPath),
+  );
 
   return (
     <main
@@ -459,7 +1000,27 @@ export const ProjectWorkspace = ({
           </div>
           <div className="project-workspace__actions">
             <button
-              className="workspace-button workspace-button--compact"
+              className="workspace-button workspace-button--compact project-action--references"
+              onClick={() => setReferenceDialog({ mode: "browse" })}
+              disabled={readOnly}
+            >
+              Enlazar
+            </button>
+            <button
+              className="workspace-button workspace-button--compact project-action--ai"
+              onClick={() => setShowOpenRouter(true)}
+            >
+              IA · OpenRouter
+            </button>
+            <button
+              className="workspace-button workspace-button--compact project-action--colors"
+              onClick={() => setShowColorProfiles(true)}
+              disabled={readOnly}
+            >
+              Colores del lienzo
+            </button>
+            <button
+              className="workspace-button workspace-button--compact project-action--canvases"
               onClick={() => {
                 if (!leftOpen) {
                   setRightOpen(false);
@@ -470,7 +1031,7 @@ export const ProjectWorkspace = ({
               {leftOpen ? "Ocultar lienzos" : "Mostrar lienzos"}
             </button>
             <button
-              className="workspace-button workspace-button--compact"
+              className="workspace-button workspace-button--compact project-action--views"
               onClick={() => {
                 if (!rightOpen) {
                   setLeftOpen(false);
@@ -590,10 +1151,15 @@ export const ProjectWorkspace = ({
                     <div className="workspace-menu__items">
                       <button
                         onClick={async () => {
-                          const name = window.prompt(
-                            "Nombre del lienzo",
-                            canvas.name,
-                          );
+                          const name = await askText({
+                            title: "Renombrar lienzo",
+                            description:
+                              "El nuevo nombre se reflejará en el proyecto y en sus referencias.",
+                            label: "Nombre del lienzo",
+                            initialValue: canvas.name,
+                            confirmLabel: "Guardar nombre",
+                            maxLength: 120,
+                          });
                           if (name?.trim()) {
                             await repository.renameCanvas(
                               projectId,
@@ -638,11 +1204,14 @@ export const ProjectWorkspace = ({
                         className="workspace-menu__danger"
                         disabled={readOnly || canvases.length <= 1}
                         onClick={async () => {
-                          if (
-                            !window.confirm(
-                              `¿Eliminar “${canvas.name}”? Esta acción es definitiva.`,
-                            )
-                          ) {
+                          const confirmed = await askConfirm({
+                            title: `Eliminar “${canvas.name}”`,
+                            description:
+                              "Se eliminarán el lienzo, sus vistas y sus archivos locales. Esta acción no se puede deshacer.",
+                            confirmLabel: "Eliminar lienzo",
+                            destructive: true,
+                          });
+                          if (!confirmed) {
                             return;
                           }
                           await repository.deleteCanvas(projectId, canvas.id);
@@ -672,12 +1241,19 @@ export const ProjectWorkspace = ({
             projectId={projectId}
             loadedCanvas={loadedCanvas}
             projectKey={projectKey}
+            profileId={profileId}
+            profileKey={activeProfileKey}
             views={views}
+            viewFolders={viewFolders}
+            colorProfiles={colorProfiles}
             readOnly={readOnly}
             presentation={presentation}
             onAPI={setApi}
             onFlush={handleFlushReady}
             onStatus={handleStatus}
+            onOpenReference={(target) =>
+              setReferenceDialog({ mode: "preview", target })
+            }
           />
         </section>
 
@@ -690,6 +1266,72 @@ export const ProjectWorkspace = ({
               </div>
               <span className="workspace-count">{views.length}</span>
             </div>
+            <div className="view-folder-toolbar">
+              <div className="view-folder-breadcrumbs">
+                <button onClick={() => setActiveViewFolderPath([])}>
+                  Vistas
+                </button>
+                {activeViewFolderPath.map((folder, index) => (
+                  <span
+                    key={folderPathKey(
+                      activeViewFolderPath.slice(0, index + 1),
+                    )}
+                  >
+                    <i>/</i>
+                    <button
+                      onClick={() =>
+                        setActiveViewFolderPath(
+                          activeViewFolderPath.slice(0, index + 1),
+                        )
+                      }
+                    >
+                      {folder}
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <button
+                className="workspace-button workspace-button--compact"
+                disabled={readOnly}
+                onClick={async () => {
+                  const name = await askText({
+                    title: "Nueva carpeta de vistas",
+                    description:
+                      "La carpeta se creará dentro de la ubicación que estás viendo.",
+                    label: "Nombre de la carpeta",
+                    placeholder: "Ej. Presentación final",
+                    confirmLabel: "Crear carpeta",
+                    maxLength: 80,
+                  });
+                  const part = name ? normalizeFolderPath(name)[0] : undefined;
+                  if (!part) {
+                    return;
+                  }
+                  const path = [...activeViewFolderPath, part];
+                  void persistViews(
+                    views,
+                    withFolderPrefixes(viewFolders, path),
+                  ).then(() => setActiveViewFolderPath(path));
+                }}
+              >
+                + Carpeta
+              </button>
+            </div>
+            {!!childViewFolders.length && (
+              <div className="view-folder-list">
+                {childViewFolders.map((folder) => (
+                  <button
+                    key={folder}
+                    onClick={() =>
+                      setActiveViewFolderPath([...activeViewFolderPath, folder])
+                    }
+                  >
+                    <span aria-hidden="true">▰</span>
+                    <strong>{folder}</strong>
+                  </button>
+                ))}
+              </div>
+            )}
             <button
               className="workspace-button workspace-button--primary workspace-button--full"
               disabled={!api || readOnly}
@@ -711,7 +1353,7 @@ export const ProjectWorkspace = ({
                 ▶ Recorrer vistas
               </button>
             )}
-            {!views.length ? (
+            {!visibleViews.length && !childViewFolders.length ? (
               <div className="views-sidebar__empty">
                 <div aria-hidden="true">⌖</div>
                 <h3>Guarda un sector</h3>
@@ -722,7 +1364,7 @@ export const ProjectWorkspace = ({
               </div>
             ) : (
               <div className="views-sidebar__list">
-                {views.map((view, index) => (
+                {visibleViews.map((view, index) => (
                   <article
                     key={view.id}
                     className={`saved-view${
@@ -751,7 +1393,14 @@ export const ProjectWorkspace = ({
                       <button
                         disabled={index === 0 || readOnly}
                         onClick={() =>
-                          void persistViews(moveSavedView(views, view.id, -1))
+                          void persistViews(
+                            moveSavedViewWithinFolder(
+                              views,
+                              view.id,
+                              -1,
+                              activeViewFolderPath,
+                            ),
+                          )
                         }
                         aria-label={`Subir ${view.name}`}
                         title="Subir"
@@ -759,9 +1408,16 @@ export const ProjectWorkspace = ({
                         ↑
                       </button>
                       <button
-                        disabled={index === views.length - 1 || readOnly}
+                        disabled={index === visibleViews.length - 1 || readOnly}
                         onClick={() =>
-                          void persistViews(moveSavedView(views, view.id, 1))
+                          void persistViews(
+                            moveSavedViewWithinFolder(
+                              views,
+                              view.id,
+                              1,
+                              activeViewFolderPath,
+                            ),
+                          )
                         }
                         aria-label={`Bajar ${view.name}`}
                         title="Bajar"
@@ -780,6 +1436,42 @@ export const ProjectWorkspace = ({
                           onClick={() => setViewDialog({ mode: "edit", view })}
                         >
                           Editar nombre y descripción
+                        </button>
+                        <button
+                          disabled={readOnly}
+                          onClick={async () => {
+                            const destination = await askText({
+                              title: `Mover “${view.name}”`,
+                              description:
+                                "Usa / para crear una ruta de subcarpetas. Deja el campo vacío para mover la vista a la raíz.",
+                              label: "Carpeta de destino",
+                              initialValue: (view.folderPath ?? []).join(" / "),
+                              placeholder: "Ej. Demo / Flujo principal",
+                              confirmLabel: "Mover vista",
+                              required: false,
+                              maxLength: 320,
+                            });
+                            if (destination === null) {
+                              return;
+                            }
+                            const path = normalizeFolderPath(destination);
+                            void persistViews(
+                              views.map((item) =>
+                                item.id === view.id
+                                  ? {
+                                      ...item,
+                                      folderPath: path.length
+                                        ? path
+                                        : undefined,
+                                      updatedAt: Date.now(),
+                                    }
+                                  : item,
+                              ),
+                              withFolderPrefixes(viewFolders, path),
+                            );
+                          }}
+                        >
+                          Mover a carpeta…
                         </button>
                         <button
                           disabled={!api || readOnly}
@@ -825,12 +1517,15 @@ export const ProjectWorkspace = ({
                         <button
                           className="workspace-menu__danger"
                           disabled={readOnly}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `¿Eliminar la vista “${view.name}”?`,
-                              )
-                            ) {
+                          onClick={async () => {
+                            const confirmed = await askConfirm({
+                              title: `Eliminar “${view.name}”`,
+                              description:
+                                "Se quitará esta vista del recorrido. Los elementos del lienzo no se modificarán.",
+                              confirmLabel: "Eliminar vista",
+                              destructive: true,
+                            });
+                            if (confirmed) {
                               void persistViews(
                                 normalizeViewOrder(
                                   views.filter((item) => item.id !== view.id),
@@ -876,7 +1571,11 @@ export const ProjectWorkspace = ({
                 loadedCanvas.id,
                 api.getAppState(),
                 views,
-                { name, description },
+                {
+                  name,
+                  description,
+                  folderPath: activeViewFolderPath,
+                },
               );
               await persistViews([...views, view]);
               setSelectedViewId(view.id);
@@ -896,6 +1595,84 @@ export const ProjectWorkspace = ({
             }
             setViewDialog(null);
           }}
+        />
+      )}
+
+      {showColorProfiles && !presentation && (
+        <CanvasColorProfilesDialog
+          profiles={colorProfiles}
+          onClose={() => setShowColorProfiles(false)}
+          onSave={async (slot, profile, applyToExistingElements) => {
+            const nextProfiles = colorProfiles.slice();
+            nextProfiles[slot] = profile;
+            await persistColorProfiles(
+              nextProfiles,
+              profile,
+              applyToExistingElements,
+            );
+          }}
+          onDelete={async (slot) => {
+            const nextProfiles = colorProfiles.slice();
+            nextProfiles[slot] = null;
+            await persistColorProfiles(nextProfiles);
+          }}
+        />
+      )}
+
+      {showOpenRouter && api && !presentation && (
+        <OpenRouterDialog
+          repository={repository}
+          profileId={profileId}
+          profileName={profileName}
+          profileProtection={profileProtection}
+          profileKey={activeProfileKey}
+          api={api}
+          onVerifyProfilePassword={onVerifyProfilePassword}
+          onProfileKey={setActiveProfileKey}
+          onClose={() => setShowOpenRouter(false)}
+        />
+      )}
+
+      {referenceDialog && !presentation && (
+        <WorkspaceReferencesDialog
+          repository={repository}
+          currentProjectId={projectId}
+          currentCanvasId={canvasId}
+          currentProjectKey={projectKey}
+          initialTarget={
+            referenceDialog.mode === "preview"
+              ? referenceDialog.target
+              : undefined
+          }
+          onInsert={
+            referenceDialog.mode === "browse"
+              ? insertWorkspaceReference
+              : undefined
+          }
+          onOpen={(target) => {
+            void flushAll().then(() => {
+              setReferenceDialog(null);
+              if (
+                target.kind === "view" &&
+                target.projectId === projectId &&
+                target.canvasId === canvasId
+              ) {
+                const view = views.find((item) => item.id === target.viewId);
+                if (view) {
+                  openView(view);
+                }
+                return;
+              }
+              if (target.canvasId) {
+                onNavigateReference(
+                  target.projectId,
+                  target.canvasId,
+                  target.viewId,
+                );
+              }
+            });
+          }}
+          onClose={() => setReferenceDialog(null)}
         />
       )}
 
@@ -942,6 +1719,7 @@ export const ProjectWorkspace = ({
           </button>
         </nav>
       )}
+      {promptDialog}
     </main>
   );
 };

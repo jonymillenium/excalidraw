@@ -301,9 +301,19 @@ export const WorkspaceDashboard = ({
                   onClick={() => onProjectAction(project, "open")}
                 >
                   <div className="workspace-project-card__preview">
-                    <div className="workspace-project-card__canvas-line" />
-                    <div className="workspace-project-card__canvas-box" />
-                    <div className="workspace-project-card__canvas-dot" />
+                    {project.thumbnail ? (
+                      <img
+                        className="workspace-project-card__thumbnail"
+                        src={project.thumbnail}
+                        alt={`Vista previa completa de ${project.name}`}
+                      />
+                    ) : (
+                      <>
+                        <div className="workspace-project-card__canvas-line" />
+                        <div className="workspace-project-card__canvas-box" />
+                        <div className="workspace-project-card__canvas-dot" />
+                      </>
+                    )}
                     {project.protection.enabled && (
                       <span
                         className="workspace-project-card__lock"

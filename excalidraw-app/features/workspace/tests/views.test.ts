@@ -4,6 +4,7 @@ import {
   captureVisibleRect,
   createSavedView,
   moveSavedView,
+  moveSavedViewWithinFolder,
 } from "../domain/views";
 
 const appState = {
@@ -42,5 +43,32 @@ describe("saved views", () => {
     const moved = moveSavedView([first, second], second.id, -1);
     expect(moved.map((view) => view.id)).toEqual([second.id, first.id]);
     expect(moved.map((view) => view.order)).toEqual([0, 1]);
+  });
+
+  it("stores nested folders and reorders only inside the active folder", () => {
+    const root = createSavedView("canvas-one", appState, [], {
+      name: "Raíz",
+    });
+    const first = createSavedView("canvas-one", appState, [root], {
+      name: "Primera",
+      folderPath: ["Pitch", "Mercado"],
+    });
+    const second = createSavedView("canvas-one", appState, [root, first], {
+      name: "Segunda",
+      folderPath: ["Pitch", "Mercado"],
+    });
+    const moved = moveSavedViewWithinFolder(
+      [root, first, second],
+      second.id,
+      -1,
+      ["Pitch", "Mercado"],
+    );
+
+    expect(second.folderPath).toEqual(["Pitch", "Mercado"]);
+    expect(moved.map((view) => view.id)).toEqual([
+      root.id,
+      second.id,
+      first.id,
+    ]);
   });
 });

@@ -6,7 +6,7 @@ import { Excalidraw } from "../index";
 
 import { API } from "../tests/helpers/api";
 import { Keyboard, Pointer, UI } from "../tests/helpers/ui";
-import { render, unmountComponent } from "../tests/test-utils";
+import { act, render, unmountComponent } from "../tests/test-utils";
 
 import { getTextEditor } from "./queries/dom";
 
@@ -70,6 +70,26 @@ describe("element locking", () => {
     mouse.moveTo(100, 100);
     mouse.upAt(100, 100);
     expect(lockedRectangle).toEqual(expect.objectContaining({ x: 0, y: 0 }));
+  });
+
+  it("toolbar padlock locks the selected object instead of the active tool", () => {
+    const rectangle = API.createElement({
+      type: "rectangle",
+      width: 100,
+      height: 100,
+    });
+    API.setElements([rectangle]);
+    API.setSelectedElements([rectangle]);
+
+    act(() => h.app.toggleLock());
+
+    expect(h.elements[0]).toMatchObject({ locked: true, x: 0, y: 0 });
+    expect(h.state.activeTool.locked).toBe(false);
+
+    mouse.downAt(50, 50);
+    mouse.moveTo(100, 100);
+    mouse.upAt(100, 100);
+    expect(h.elements[0]).toMatchObject({ locked: true, x: 0, y: 0 });
   });
 
   it("dragging element that's below a locked element", () => {

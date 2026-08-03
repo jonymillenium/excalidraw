@@ -197,11 +197,27 @@
     "noItems": "No hay elementos añadidos todavía...",
     "hint_emptyLibrary": "Seleccione un elemento en el lienzo para añadirlo aquí, o instale una biblioteca del repositorio público, a continuación.",
     "hint_emptyPrivateLibrary": "Seleccione un elemento del lienzo para añadirlo aquí.",
+    "naming": {
+      "prompt": "Ponle un nombre a este elemento de biblioteca",
+      "defaultName": "Nuevo asset",
+      "add": "Añadir",
+      "rename": "Renombrar asset",
+      "unnamed": "Sin nombre"
+    },
+    "folders": {
+      "root": "Biblioteca",
+      "new": "Nueva carpeta",
+      "prompt": "Nombre de la carpeta",
+      "create": "Crear carpeta",
+      "moveHere": "Mover aquí",
+      "rename": "Renombrar",
+      "empty": "Esta carpeta está vacía"
+    },
     "search": {
-      "inputPlaceholder": "",
-      "heading": "",
-      "noResults": "",
-      "clearSearch": ""
+      "inputPlaceholder": "Buscar en la biblioteca",
+      "heading": "Coincidencias de biblioteca",
+      "noResults": "No se encontraron elementos…",
+      "clearSearch": "Limpiar búsqueda"
     }
   },
   "search": {

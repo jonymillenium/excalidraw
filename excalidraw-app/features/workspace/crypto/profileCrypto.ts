@@ -63,4 +63,5 @@ export const unlockProfile = async (
   ) {
     throw new Error("La contraseña es incorrecta o los datos están dañados.");
   }
+  return key;
 };

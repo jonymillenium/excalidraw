@@ -5001,6 +5001,16 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   toggleLock = (source: "keyboard" | "ui" = "ui") => {
+    if (
+      source === "ui" &&
+      this.scene.getSelectedElements({
+        selectedElementIds: this.state.selectedElementIds,
+        includeBoundTextElement: false,
+      }).length > 0
+    ) {
+      this.actionManager.executeAction(actionToggleElementLock, "ui");
+      return;
+    }
     if (this.props.activeTool) {
       // the active tool — including its lock state — is host-controlled
       return;
@@ -11155,8 +11165,15 @@ class App extends React.Component<AppProps, AppState> {
                 }
               });
 
-              this.maybeCacheVisibleGaps(event, selectedElements, true);
-              this.maybeCacheReferenceSnapPoints(event, selectedElements, true);
+              // The duplicates are now selected and moving. Exclude them from
+              // snap references so their stationary originals become valid
+              // alignment targets instead of the copies snapping to themselves.
+              this.maybeCacheVisibleGaps(event, duplicatedElements, true);
+              this.maybeCacheReferenceSnapPoints(
+                event,
+                duplicatedElements,
+                true,
+              );
             });
           }
 

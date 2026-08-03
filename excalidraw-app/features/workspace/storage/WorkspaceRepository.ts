@@ -74,6 +74,15 @@ export interface WorkspaceRepository {
   ): Promise<CanvasSummary>;
   reorderCanvases(projectId: string, ids: string[]): Promise<void>;
   deleteCanvas(projectId: string, canvasId: string): Promise<void>;
+  saveProjectThumbnail(
+    projectId: string,
+    canvasId: string,
+    dataURL?: string,
+  ): Promise<void>;
+  getCanvasThumbnail(
+    projectId: string,
+    canvasId: string,
+  ): Promise<string | undefined>;
 
   unlockProject(id: string, password: string): Promise<CryptoKey>;
   protectProject(id: string, password: string): Promise<CryptoKey>;

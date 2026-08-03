@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef } from "react";
 import type { OrderedExcalidrawElement } from "@excalidraw/element/types";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 
-import type { CanvasPayload } from "../domain/types";
+import {
+  PRECISION_SNAPPING_VERSION,
+  type CanvasPayload,
+} from "../domain/types";
+import { createCanvasThumbnail } from "../services/canvasThumbnail";
+
 import type { WorkspaceRepository } from "../storage/WorkspaceRepository";
 
 export type SaveStatus = "saved" | "saving" | "error";
@@ -20,6 +25,8 @@ export const useAutosaveCanvas = ({
   canvasId,
   key,
   views,
+  viewFolders,
+  colorProfiles,
   disabled,
   onStatusChange,
   delay = 850,
@@ -29,6 +36,8 @@ export const useAutosaveCanvas = ({
   canvasId: string;
   key?: CryptoKey;
   views: CanvasPayload["views"];
+  viewFolders: CanvasPayload["viewFolders"];
+  colorProfiles: CanvasPayload["colorProfiles"];
   disabled?: boolean;
   onStatusChange: (status: SaveStatus, error?: Error) => void;
   delay?: number;
@@ -38,6 +47,10 @@ export const useAutosaveCanvas = ({
   const activeSave = useRef<Promise<void> | null>(null);
   const viewsRef = useRef(views);
   viewsRef.current = views;
+  const viewFoldersRef = useRef(viewFolders);
+  viewFoldersRef.current = viewFolders;
+  const colorProfilesRef = useRef(colorProfiles);
+  colorProfilesRef.current = colorProfiles;
 
   const flush = useCallback(async () => {
     if (timer.current !== null) {
@@ -61,11 +74,33 @@ export const useAutosaveCanvas = ({
           appState: scene.appState,
           fileIds: Object.keys(scene.files) as CanvasPayload["fileIds"],
           views: viewsRef.current,
+          viewFolders: viewFoldersRef.current,
+          colorProfiles: colorProfilesRef.current,
+          editorFeatures: {
+            precisionSnappingVersion: PRECISION_SNAPPING_VERSION,
+          },
         },
         scene.files,
         key,
       )
-      .then(() => onStatusChange("saved"))
+      .then(async () => {
+        try {
+          const thumbnail = await createCanvasThumbnail(
+            {
+              elements: scene.elements,
+              appState: scene.appState,
+            },
+            scene.files,
+          );
+          await repository.saveProjectThumbnail(projectId, canvasId, thumbnail);
+        } catch (error) {
+          console.warn(
+            "No se pudo actualizar la miniatura del proyecto",
+            error,
+          );
+        }
+        onStatusChange("saved");
+      })
       .catch((error: unknown) => {
         const normalized =
           error instanceof Error ? error : new Error("No se pudo guardar.");

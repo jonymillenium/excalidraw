@@ -88,7 +88,11 @@ const LibraryMenuContent = memo(
     const [libraryItemsData] = useAtom(libraryItemsAtom);
 
     const _onAddToLibrary = useCallback(
-      (elements: LibraryItem["elements"]) => {
+      (
+        elements: LibraryItem["elements"],
+        name: string,
+        folderPath: readonly string[],
+      ) => {
         const addToLibrary = async (
           processedElements: LibraryItem["elements"],
           libraryItems: LibraryItems,
@@ -107,6 +111,8 @@ const LibraryMenuContent = memo(
               elements: processedElements,
               id: randomId(),
               created: Date.now(),
+              name: name.trim(),
+              folderPath,
             },
             ...libraryItems,
           ];

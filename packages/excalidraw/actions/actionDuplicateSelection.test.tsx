@@ -18,6 +18,29 @@ describe("actionDuplicateSelection", () => {
     await render(<Excalidraw />);
   });
 
+  it("duplicates in place without introducing diagonal misalignment", () => {
+    const rectangle = API.createElement({
+      type: "rectangle",
+      x: 37,
+      y: 52,
+      width: 123,
+      height: 87,
+    });
+
+    API.setElements([rectangle]);
+    API.setSelectedElements([rectangle]);
+
+    act(() => {
+      h.app.actionManager.executeAction(actionDuplicateSelection);
+    });
+
+    expect(h.elements).toHaveLength(2);
+    expect([h.elements[1].x, h.elements[1].y]).toEqual([
+      rectangle.x,
+      rectangle.y,
+    ]);
+  });
+
   describe("duplicating frames", () => {
     it("frame selected only", async () => {
       const frame = API.createElement({
