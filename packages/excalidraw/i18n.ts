@@ -96,6 +96,12 @@ export const setLanguage = async (lang: Language) => {
 
   if (lang.code.startsWith(TEST_LANG_CODE)) {
     currentLangData = {};
+  } else if (lang.code === defaultLang.code) {
+    // The default locale is already bundled statically. Reusing it avoids an
+    // unnecessary dynamic import and keeps local development working when the
+    // repository path contains characters Vite cannot interpolate in an
+    // import glob (for example `|`).
+    currentLangData = fallbackLangData;
   } else {
     try {
       currentLangData = await import(`./locales/${currentLang.code}.json`);
