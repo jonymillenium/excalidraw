@@ -22,12 +22,14 @@ export const createSavedView = (
   canvasId: string,
   appState: AppState,
   existingViews: SavedView[],
+  metadata?: { name?: string; description?: string },
 ): SavedView => {
   const now = Date.now();
   return {
     id: createId(),
     canvasId,
-    name: `Vista ${existingViews.length + 1}`,
+    name: metadata?.name?.trim() || `Vista ${existingViews.length + 1}`,
+    description: metadata?.description?.trim() || undefined,
     order: existingViews.length,
     rect: captureVisibleRect(appState),
     transitionDurationMs: 400,

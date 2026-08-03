@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-import type { ProjectSummary } from "../domain/types";
+import type { ProjectSummary, WorkspaceProfile } from "../domain/types";
 
 export type ProjectAction =
   | "open"
@@ -23,20 +23,37 @@ const formatDate = (date: number) =>
 
 export const WorkspaceDashboard = ({
   projects,
+  profiles,
+  activeProfileId,
   unlockedProjectIds,
   message,
   onCreate,
   onImport,
+  onImportBackup,
+  onExportBackup,
+  onProfileChange,
+  onCreateProfile,
+  onRenameProfile,
+  onDeleteProfile,
   onProjectAction,
 }: {
   projects: ProjectSummary[];
+  profiles: WorkspaceProfile[];
+  activeProfileId: string;
   unlockedProjectIds: Set<string>;
   message?: string;
   onCreate: () => void;
   onImport: (file: File) => void;
+  onImportBackup: (file: File) => void;
+  onExportBackup: () => void;
+  onProfileChange: (profileId: string) => void;
+  onCreateProfile: () => void;
+  onRenameProfile: () => void;
+  onDeleteProfile: () => void;
   onProjectAction: (project: ProjectSummary, action: ProjectAction) => void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <main className="workspace-dashboard">
@@ -68,12 +85,39 @@ export const WorkspaceDashboard = ({
               event.target.value = "";
             }}
           />
+          <input
+            ref={backupInputRef}
+            type="file"
+            accept=".xcalidraw-backup,application/json"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                onImportBackup(file);
+              }
+              event.target.value = "";
+            }}
+          />
           <button
             type="button"
             className="workspace-button"
             onClick={() => fileInputRef.current?.click()}
           >
-            Importar
+            Importar proyecto
+          </button>
+          <button
+            type="button"
+            className="workspace-button"
+            onClick={() => backupInputRef.current?.click()}
+          >
+            Restaurar backup
+          </button>
+          <button
+            type="button"
+            className="workspace-button"
+            onClick={onExportBackup}
+          >
+            Exportar todo
           </button>
           <button
             type="button"
@@ -84,6 +128,37 @@ export const WorkspaceDashboard = ({
           </button>
         </div>
       </header>
+
+      <section className="workspace-profile-bar" aria-label="Perfil local">
+        <label>
+          <span>Perfil</span>
+          <select
+            value={activeProfileId}
+            onChange={(event) => onProfileChange(event.target.value)}
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div>
+          <button className="workspace-button" onClick={onCreateProfile}>
+            Nuevo perfil
+          </button>
+          <button className="workspace-button" onClick={onRenameProfile}>
+            Renombrar
+          </button>
+          <button
+            className="workspace-button"
+            onClick={onDeleteProfile}
+            disabled={profiles.length <= 1}
+          >
+            Eliminar perfil
+          </button>
+        </div>
+      </section>
 
       {message && (
         <div className="workspace-alert workspace-alert--info">{message}</div>

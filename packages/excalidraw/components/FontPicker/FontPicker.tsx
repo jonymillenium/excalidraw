@@ -28,6 +28,12 @@ export const DEFAULT_FONTS = [
     testId: "font-family-hand-drawn",
   },
   {
+    value: FONT_FAMILY.Virgil,
+    icon: FreedrawIcon,
+    text: "Virgil",
+    testId: "font-family-virgil",
+  },
+  {
     value: FONT_FAMILY.Nunito,
     icon: FontFamilyNormalIcon,
     text: t("labels.normal"),

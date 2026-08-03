@@ -237,6 +237,8 @@ summary:focus-visible {
 
   &__header-actions {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 0.65rem;
   }
 
@@ -255,6 +257,81 @@ summary:focus-visible {
     border-top: 1px solid var(--workspace-border);
     color: var(--workspace-muted);
     font-size: 0.75rem;
+  }
+}
+
+.workspace-profile-bar {
+  display: flex;
+  max-width: 1210px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: -1.25rem auto 2rem;
+  padding: 0.75rem;
+  border: 1px solid var(--workspace-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--workspace-surface) 90%, transparent);
+
+  label,
+  > div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  label > span {
+    color: var(--workspace-muted);
+    font-size: 0.75rem;
+    font-weight: 800;
+  }
+
+  select {
+    min-width: 170px;
+    min-height: 36px;
+    padding: 0 2rem 0 0.7rem;
+    border: 1px solid var(--workspace-border);
+    border-radius: 9px;
+    background: var(--workspace-surface);
+    color: var(--workspace-text);
+    font: inherit;
+    font-weight: 800;
+  }
+}
+
+.workspace-choice-group {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0;
+  border: 0;
+
+  legend {
+    margin-bottom: 0.45rem;
+    font-size: 0.85rem;
+    font-weight: 800;
+  }
+}
+
+.workspace-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.8rem;
+  border: 1px solid var(--workspace-border);
+  border-radius: 10px;
+  cursor: pointer;
+
+  input {
+    margin-top: 0.2rem;
+  }
+
+  span {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  small {
+    color: var(--workspace-muted);
+    font-weight: 500;
   }
 }
 
@@ -554,6 +631,19 @@ summary:focus-visible {
       top: calc(100% + 4px);
       bottom: auto;
     }
+  }
+}
+
+.workspace-menu--export {
+  summary {
+    width: auto;
+    height: auto;
+    list-style: none;
+  }
+
+  .workspace-menu__items {
+    top: calc(100% + 6px);
+    bottom: auto;
   }
 }
 
@@ -1069,6 +1159,48 @@ summary:focus-visible {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  &__meta {
+    display: grid;
+    min-width: 0;
+
+    small {
+      overflow: hidden;
+      color: var(--workspace-muted);
+      font-size: 0.64rem;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  &__order {
+    display: grid;
+    gap: 1px;
+
+    button {
+      display: grid;
+      width: 22px;
+      height: 19px;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      place-items: center;
+      background: transparent;
+      color: var(--workspace-muted);
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: var(--workspace-surface-subtle);
+        color: var(--workspace-text);
+      }
+
+      &:disabled {
+        cursor: default;
+        opacity: 0.25;
+      }
+    }
+  }
 }
 
 .presentation-controls {
@@ -1106,6 +1238,25 @@ summary:focus-visible {
       color: rgb(255 255 255 / 65%);
       font-size: 0.66rem;
     }
+
+    small {
+      overflow: hidden;
+      max-width: 210px;
+      color: rgb(255 255 255 / 72%);
+      font-size: 0.66rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  &__laser {
+    padding: 0.35rem 0.5rem;
+    border-radius: 8px;
+    background: rgb(255 71 87 / 14%);
+    color: #ff7c86;
+    font-size: 0.68rem;
+    font-weight: 800;
+    white-space: nowrap;
   }
 
   &__button,
@@ -1146,7 +1297,7 @@ summary:focus-visible {
 
   .project-workspace__actions .workspace-button:nth-child(1),
   .project-workspace__actions .workspace-button:nth-child(2),
-  .project-workspace__actions .workspace-button:last-child {
+  .project-workspace__actions .workspace-export-project-button {
     display: none;
   }
 
@@ -1187,6 +1338,20 @@ summary:focus-visible {
     height: 40px;
   }
 
+  .workspace-profile-bar {
+    align-items: stretch;
+    flex-direction: column;
+
+    label,
+    > div {
+      flex-wrap: wrap;
+    }
+
+    select {
+      flex: 1;
+    }
+  }
+
   .workspace-project-grid {
     grid-template-columns: 1fr;
   }
@@ -1209,6 +1374,10 @@ summary:focus-visible {
   .project-workspace__breadcrumbs > div span:last-child,
   .project-workspace__actions
     .workspace-button:not(:nth-child(1)):not(:nth-child(2)) {
+    display: none;
+  }
+
+  .workspace-menu--export {
     display: none;
   }
 
@@ -1246,6 +1415,10 @@ summary:focus-visible {
     max-width: calc(100vw - 24px);
 
     &__exit {
+      display: none;
+    }
+
+    &__laser {
       display: none;
     }
   }

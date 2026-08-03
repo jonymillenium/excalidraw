@@ -4,7 +4,9 @@ import polyfill from "@excalidraw/excalidraw/polyfill";
 
 import "../../index.scss";
 
+import { BackupDialog } from "./components/BackupDialog";
 import { CreateProjectDialog } from "./components/CreateProjectDialog";
+import { ProfileDialog } from "./components/ProfileDialog";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
 import { UnlockProjectDialog } from "./components/UnlockProjectDialog";
 import {
@@ -13,13 +15,32 @@ import {
 } from "./components/WorkspaceDashboard";
 
 import { migrateLegacyScene } from "./services/legacyMigration";
+import {
+  createWorkspaceProfile,
+  getActiveProfileId,
+  getWorkspaceProfiles,
+  importWorkspaceProfile,
+  removeWorkspaceProfile,
+  renameWorkspaceProfile,
+  setActiveProfileId,
+} from "./services/profileRegistry";
 import { downloadProject, readWorkspaceFile } from "./services/projectTransfer";
-import { workspaceRepository } from "./storage/IndexedDBWorkspaceRepository";
-import { WorkspacePasswordRequiredError } from "./storage/WorkspaceRepository";
+import {
+  downloadWorkspaceBackup,
+  readWorkspaceBackup,
+} from "./services/workspaceBackup";
+import {
+  deleteWorkspaceProfileDatabase,
+  getWorkspaceRepository,
+} from "./storage/IndexedDBWorkspaceRepository";
+import {
+  WorkspacePasswordRequiredError,
+  type WorkspaceRepository,
+} from "./storage/WorkspaceRepository";
 
 import "./workspace.scss";
 
-import type { ProjectSummary } from "./domain/types";
+import type { ProjectSummary, WorkspaceExport } from "./domain/types";
 
 polyfill();
 
@@ -40,14 +61,22 @@ const parseRoute = (): Route => {
     : { name: "dashboard" };
 };
 
-let initializationPromise: Promise<boolean> | null = null;
+const initializationPromises = new Map<string, Promise<boolean>>();
 
 const WorkspaceApp = () => {
-  const repository = workspaceRepository;
+  const [profiles, setProfiles] = useState(getWorkspaceProfiles);
+  const [activeProfileId, setActiveProfile] = useState(getActiveProfileId);
+  const activeProfile =
+    profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
+  const repository = getWorkspaceRepository(activeProfile.id);
   const [route, setRoute] = useState<Route>(parseRoute);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [profileDialog, setProfileDialog] = useState<
+    "create" | "rename" | null
+  >(null);
   const [unlockTarget, setUnlockTarget] = useState<ProjectSummary | null>(null);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
@@ -90,7 +119,18 @@ const WorkspaceApp = () => {
 
   useEffect(() => {
     let active = true;
-    initializationPromise ??= migrateLegacyScene(repository);
+    setLoading(true);
+    setProjects([]);
+    let initializationPromise = initializationPromises.get(activeProfile.id);
+    if (!initializationPromise) {
+      initializationPromise =
+        activeProfile.id === "default"
+          ? migrateLegacyScene(repository)
+          : repository
+              .updateSettings({ legacyMigrationCompleted: true })
+              .then(() => false);
+      initializationPromises.set(activeProfile.id, initializationPromise);
+    }
     void initializationPromise
       .then(async (migrated) => {
         const [nextProjects, settings] = await Promise.all([
@@ -134,7 +174,7 @@ const WorkspaceApp = () => {
     return () => {
       active = false;
     };
-  }, [navigate, repository]);
+  }, [activeProfile.id, navigate, repository]);
 
   useEffect(() => {
     void sessionVersion;
@@ -170,6 +210,26 @@ const WorkspaceApp = () => {
       return key;
     },
     [repository],
+  );
+
+  const importProjectData = useCallback(
+    async (targetRepository: WorkspaceRepository, data: WorkspaceExport) => {
+      try {
+        return await targetRepository.importProject(data);
+      } catch (importError) {
+        if (!(importError instanceof WorkspacePasswordRequiredError)) {
+          throw importError;
+        }
+        const password = window.prompt(
+          `Ya existe “${data.project.name}” con el mismo ID. Introduce la contraseña del backup para restaurarlo con IDs nuevos.`,
+        );
+        if (!password) {
+          throw new Error("La restauración fue cancelada.");
+        }
+        return targetRepository.importProject(data, password);
+      }
+    },
+    [],
   );
 
   const openProject = useCallback(
@@ -325,6 +385,19 @@ const WorkspaceApp = () => {
 
   const unlockedProjectIds = new Set(projectKeys.current.keys());
 
+  const switchProfile = (profileId: string) => {
+    if (profileId === activeProfile.id) {
+      return;
+    }
+    projectKeys.current.clear();
+    setSessionVersion((version) => version + 1);
+    setActiveProfileId(profileId);
+    setActiveProfile(profileId);
+    setMessage(undefined);
+    setError(undefined);
+    navigate({ name: "dashboard" }, true);
+  };
+
   if (loading) {
     return (
       <main className="workspace-loading">
@@ -366,6 +439,8 @@ const WorkspaceApp = () => {
       ) : (
         <WorkspaceDashboard
           projects={projects}
+          profiles={profiles}
+          activeProfileId={activeProfile.id}
           unlockedProjectIds={unlockedProjectIds}
           message={error ?? message}
           onCreate={() => setCreateOpen(true)}
@@ -373,23 +448,7 @@ const WorkspaceApp = () => {
             void (async () => {
               try {
                 const data = await readWorkspaceFile(file);
-                let imported;
-                try {
-                  imported = await repository.importProject(data);
-                } catch (importError) {
-                  if (
-                    !(importError instanceof WorkspacePasswordRequiredError)
-                  ) {
-                    throw importError;
-                  }
-                  const password = window.prompt(
-                    "Ya existe un proyecto con el mismo ID. Introduce la contraseña del backup para importarlo con IDs nuevos.",
-                  );
-                  if (!password) {
-                    return;
-                  }
-                  imported = await repository.importProject(data, password);
-                }
+                const imported = await importProjectData(repository, data);
                 await refreshProjects();
                 setMessage(`Se importó “${imported.name}” correctamente.`);
                 setError(undefined);
@@ -402,9 +461,159 @@ const WorkspaceApp = () => {
               }
             })();
           }}
+          onImportBackup={(file) => {
+            void (async () => {
+              try {
+                const backup = await readWorkspaceBackup(file);
+                if (
+                  projects.length &&
+                  !window.confirm(
+                    "El backup se combinará con los proyectos existentes sin borrarlos. ¿Continuar?",
+                  )
+                ) {
+                  return;
+                }
+                setMessage("Restaurando backup…");
+                setError(undefined);
+                let importedProjects = 0;
+                for (const profileBackup of backup.profiles) {
+                  const targetProfile = importWorkspaceProfile(
+                    profileBackup.profile,
+                  );
+                  const targetRepository = getWorkspaceRepository(
+                    targetProfile.id,
+                  );
+                  const projectIdMap = new Map<string, string>();
+                  for (const projectExport of profileBackup.projects) {
+                    const imported = await importProjectData(
+                      targetRepository,
+                      projectExport,
+                    );
+                    projectIdMap.set(projectExport.project.id, imported.id);
+                    importedProjects += 1;
+                  }
+                  if (profileBackup.settings) {
+                    const sourceLastProjectId =
+                      profileBackup.settings.lastProjectId;
+                    const restoredLastProjectId = sourceLastProjectId
+                      ? projectIdMap.get(sourceLastProjectId)
+                      : undefined;
+                    await targetRepository.updateSettings({
+                      reopenLastCanvas: profileBackup.settings.reopenLastCanvas,
+                      legacyMigrationCompleted: true,
+                      lastProjectId: restoredLastProjectId,
+                      lastCanvasId:
+                        restoredLastProjectId === sourceLastProjectId
+                          ? profileBackup.settings.lastCanvasId
+                          : undefined,
+                    });
+                  }
+                }
+                setProfiles(getWorkspaceProfiles());
+                await refreshProjects();
+                setMessage(
+                  `Backup restaurado: ${importedProjects} ${
+                    importedProjects === 1 ? "proyecto" : "proyectos"
+                  } en ${backup.profiles.length} ${
+                    backup.profiles.length === 1 ? "perfil" : "perfiles"
+                  }.`,
+                );
+              } catch (backupError) {
+                setError(
+                  backupError instanceof Error
+                    ? backupError.message
+                    : "No se pudo restaurar el backup.",
+                );
+              }
+            })();
+          }}
+          onExportBackup={() => setBackupOpen(true)}
+          onProfileChange={switchProfile}
+          onCreateProfile={() => setProfileDialog("create")}
+          onRenameProfile={() => setProfileDialog("rename")}
+          onDeleteProfile={() => {
+            void (async () => {
+              if (
+                !window.confirm(
+                  `¿Eliminar el perfil “${activeProfile.name}” y todos sus proyectos? Esta acción es definitiva.`,
+                )
+              ) {
+                return;
+              }
+              try {
+                const nextProfiles = profiles.filter(
+                  (profile) => profile.id !== activeProfile.id,
+                );
+                const nextProfile = nextProfiles[0];
+                if (!nextProfile) {
+                  throw new Error("Debe existir al menos un perfil.");
+                }
+                navigate({ name: "dashboard" }, true);
+                projectKeys.current.clear();
+                await deleteWorkspaceProfileDatabase(activeProfile.id);
+                setProfiles(removeWorkspaceProfile(activeProfile.id));
+                setActiveProfileId(nextProfile.id);
+                setActiveProfile(nextProfile.id);
+                setMessage(`Se eliminó el perfil “${activeProfile.name}”.`);
+              } catch (profileError) {
+                setError(
+                  profileError instanceof Error
+                    ? profileError.message
+                    : "No se pudo eliminar el perfil.",
+                );
+              }
+            })();
+          }}
           onProjectAction={(project, action) =>
             void handleProjectAction(project, action)
           }
+        />
+      )}
+
+      {backupOpen && (
+        <BackupDialog
+          profileName={activeProfile.name}
+          profileCount={profiles.length}
+          onCancel={() => setBackupOpen(false)}
+          onExport={async (options) => {
+            const selectedProfiles =
+              options.scope === "profile" ? [activeProfile] : profiles;
+            await downloadWorkspaceBackup(
+              selectedProfiles.map((profile) => ({
+                profile,
+                repository: getWorkspaceRepository(profile.id),
+              })),
+              options,
+            );
+            setBackupOpen(false);
+            setMessage(
+              options.scope === "profile"
+                ? `Backup de “${activeProfile.name}” exportado.`
+                : "Backup de todos los perfiles exportado.",
+            );
+            setError(undefined);
+          }}
+        />
+      )}
+
+      {profileDialog && (
+        <ProfileDialog
+          mode={profileDialog}
+          initialName={
+            profileDialog === "rename" ? activeProfile.name : undefined
+          }
+          onCancel={() => setProfileDialog(null)}
+          onSubmit={async (name) => {
+            if (profileDialog === "create") {
+              const profile = createWorkspaceProfile(name);
+              setProfiles(getWorkspaceProfiles());
+              setProfileDialog(null);
+              switchProfile(profile.id);
+            } else {
+              setProfiles(renameWorkspaceProfile(activeProfile.id, name));
+              setProfileDialog(null);
+            }
+          }}
         />
       )}
 

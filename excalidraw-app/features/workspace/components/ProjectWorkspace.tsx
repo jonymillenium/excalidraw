@@ -14,8 +14,14 @@ import {
 } from "../domain/views";
 
 import { useAutosaveCanvas, type SaveStatus } from "../hooks/useAutosaveCanvas";
+import {
+  exportCanvas,
+  type CanvasExportFormat,
+} from "../services/canvasExport";
 import { CanvasLease } from "../services/canvasLease";
 import { downloadProject } from "../services/projectTransfer";
+
+import { SavedViewDialog } from "./SavedViewDialog";
 
 import type {
   CanvasSummary,
@@ -85,7 +91,18 @@ const EditorCanvas = ({
       onExcalidrawAPI={onAPI}
       viewModeEnabled={presentation || readOnly}
       zenModeEnabled={presentation}
-      interaction={!(presentation || readOnly)}
+      activeTool={presentation ? { type: "laser" } : undefined}
+      interaction={
+        presentation
+          ? {
+              enabled: {
+                links: true,
+                navigation: true,
+                tools: { laser: true },
+              },
+            }
+          : !readOnly
+      }
       theme={theme}
       onThemeChange={setThemePreference}
       autoFocus={!presentation}
@@ -151,6 +168,9 @@ export const ProjectWorkspace = ({
   const [loadedCanvas, setLoadedCanvas] = useState<LoadedCanvas | null>(null);
   const [views, setViews] = useState<SavedView[]>([]);
   const [selectedViewId, setSelectedViewId] = useState<string>();
+  const [viewDialog, setViewDialog] = useState<
+    { mode: "create" } | { mode: "edit"; view: SavedView } | null
+  >(null);
   const [presentationIndex, setPresentationIndex] = useState<number | null>(
     null,
   );
@@ -368,6 +388,21 @@ export const ProjectWorkspace = ({
     );
   };
 
+  const handleCanvasExport = async (format: CanvasExportFormat) => {
+    if (!api) {
+      return;
+    }
+    try {
+      await exportCanvas(api, loadedCanvas?.name ?? "lienzo", format);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : "No se pudo exportar el lienzo.",
+      );
+    }
+  };
+
   const handleFlushReady = useCallback((flush: () => Promise<void>) => {
     flushRef.current = flush;
   }, []);
@@ -457,11 +492,33 @@ export const ProjectWorkspace = ({
               </button>
             )}
             <button
-              className="workspace-button workspace-button--compact"
+              className="workspace-button workspace-button--compact workspace-export-project-button"
               onClick={() => void downloadProject(repository, projectId)}
             >
               Exportar proyecto
             </button>
+            <details className="workspace-menu workspace-menu--export">
+              <summary
+                className="workspace-button workspace-button--compact"
+                aria-label="Exportar lienzo"
+              >
+                Exportar lienzo
+              </summary>
+              <div className="workspace-menu__items">
+                <button onClick={() => void handleCanvasExport("png")}>
+                  Imagen PNG
+                </button>
+                <button onClick={() => void handleCanvasExport("jpg")}>
+                  Imagen JPG
+                </button>
+                <button onClick={() => void handleCanvasExport("svg")}>
+                  Vector SVG
+                </button>
+                <button onClick={() => void handleCanvasExport("excalidraw")}>
+                  Archivo .excalidraw
+                </button>
+              </div>
+            </details>
           </div>
         </header>
       )}
@@ -636,18 +693,7 @@ export const ProjectWorkspace = ({
             <button
               className="workspace-button workspace-button--primary workspace-button--full"
               disabled={!api || readOnly}
-              onClick={() => {
-                if (!api) {
-                  return;
-                }
-                const view = createSavedView(
-                  loadedCanvas.id,
-                  api.getAppState(),
-                  views,
-                );
-                void persistViews([...views, view]);
-                setSelectedViewId(view.id);
-              }}
+              onClick={() => setViewDialog({ mode: "create" })}
             >
               + Guardar vista actual
             </button>
@@ -691,8 +737,38 @@ export const ProjectWorkspace = ({
                       <span className="saved-view__preview" aria-hidden="true">
                         <i />
                       </span>
-                      <span className="saved-view__name">{view.name}</span>
+                      <span className="saved-view__meta">
+                        <strong className="saved-view__name">
+                          {view.name}
+                        </strong>
+                        {view.description && <small>{view.description}</small>}
+                      </span>
                     </button>
+                    <div
+                      className="saved-view__order"
+                      aria-label={`Ordenar ${view.name}`}
+                    >
+                      <button
+                        disabled={index === 0 || readOnly}
+                        onClick={() =>
+                          void persistViews(moveSavedView(views, view.id, -1))
+                        }
+                        aria-label={`Subir ${view.name}`}
+                        title="Subir"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        disabled={index === views.length - 1 || readOnly}
+                        onClick={() =>
+                          void persistViews(moveSavedView(views, view.id, 1))
+                        }
+                        aria-label={`Bajar ${view.name}`}
+                        title="Bajar"
+                      >
+                        ↓
+                      </button>
+                    </div>
                     <details className="workspace-menu workspace-menu--panel">
                       <summary aria-label={`Acciones para ${view.name}`}>
                         •••
@@ -701,27 +777,9 @@ export const ProjectWorkspace = ({
                         <button onClick={() => openView(view)}>Abrir</button>
                         <button
                           disabled={readOnly}
-                          onClick={() => {
-                            const name = window.prompt(
-                              "Nombre de la vista",
-                              view.name,
-                            );
-                            if (name?.trim()) {
-                              void persistViews(
-                                views.map((item) =>
-                                  item.id === view.id
-                                    ? {
-                                        ...item,
-                                        name: name.trim(),
-                                        updatedAt: Date.now(),
-                                      }
-                                    : item,
-                                ),
-                              );
-                            }
-                          }}
+                          onClick={() => setViewDialog({ mode: "edit", view })}
                         >
-                          Renombrar
+                          Editar nombre y descripción
                         </button>
                         <button
                           disabled={!api || readOnly}
@@ -765,22 +823,6 @@ export const ProjectWorkspace = ({
                           Duplicar
                         </button>
                         <button
-                          disabled={index === 0 || readOnly}
-                          onClick={() =>
-                            void persistViews(moveSavedView(views, view.id, -1))
-                          }
-                        >
-                          Subir
-                        </button>
-                        <button
-                          disabled={index === views.length - 1 || readOnly}
-                          onClick={() =>
-                            void persistViews(moveSavedView(views, view.id, 1))
-                          }
-                        >
-                          Bajar
-                        </button>
-                        <button
                           className="workspace-menu__danger"
                           disabled={readOnly}
                           onClick={() => {
@@ -809,6 +851,54 @@ export const ProjectWorkspace = ({
         )}
       </div>
 
+      {viewDialog && !presentation && (
+        <SavedViewDialog
+          key={viewDialog.mode === "edit" ? viewDialog.view.id : "new-view"}
+          title={viewDialog.mode === "edit" ? "Editar vista" : "Guardar vista"}
+          initialName={
+            viewDialog.mode === "edit"
+              ? viewDialog.view.name
+              : `Vista ${views.length + 1}`
+          }
+          initialDescription={
+            viewDialog.mode === "edit" ? viewDialog.view.description : undefined
+          }
+          submitLabel={
+            viewDialog.mode === "edit" ? "Guardar cambios" : "Guardar vista"
+          }
+          onCancel={() => setViewDialog(null)}
+          onSave={async ({ name, description }) => {
+            if (!api) {
+              return;
+            }
+            if (viewDialog.mode === "create") {
+              const view = createSavedView(
+                loadedCanvas.id,
+                api.getAppState(),
+                views,
+                { name, description },
+              );
+              await persistViews([...views, view]);
+              setSelectedViewId(view.id);
+            } else {
+              await persistViews(
+                views.map((item) =>
+                  item.id === viewDialog.view.id
+                    ? {
+                        ...item,
+                        name,
+                        description,
+                        updatedAt: Date.now(),
+                      }
+                    : item,
+                ),
+              );
+            }
+            setViewDialog(null);
+          }}
+        />
+      )}
+
       {presentation && presentationIndex !== null && (
         <nav
           className="presentation-controls"
@@ -826,10 +916,14 @@ export const ProjectWorkspace = ({
           </button>
           <div>
             <strong>{views[presentationIndex]?.name}</strong>
+            {views[presentationIndex]?.description && (
+              <small>{views[presentationIndex]?.description}</small>
+            )}
             <span>
               {presentationIndex + 1} / {views.length}
             </span>
           </div>
+          <span className="presentation-controls__laser">● Láser</span>
           <button
             className="presentation-controls__button"
             disabled={presentationIndex === views.length - 1}

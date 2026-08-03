@@ -25,8 +25,12 @@ describe("saved views", () => {
   });
 
   it("creates named, ordered views with the default transition", () => {
-    const view = createSavedView("canvas-one", appState, []);
-    expect(view.name).toBe("Vista 1");
+    const view = createSavedView("canvas-one", appState, [], {
+      name: "Introducción",
+      description: "Vista general del flujo",
+    });
+    expect(view.name).toBe("Introducción");
+    expect(view.description).toBe("Vista general del flujo");
     expect(view.order).toBe(0);
     expect(view.transitionDurationMs).toBe(400);
     expect(view.canvasId).toBe("canvas-one");

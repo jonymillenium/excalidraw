@@ -3,6 +3,7 @@ import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
 
 export const WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const WORKSPACE_EXPORT_TYPE = "excalidraw-workspace" as const;
+export const WORKSPACE_BACKUP_TYPE = "excalidraw-workspace-backup" as const;
 
 export type WorkspaceSchemaVersion = typeof WORKSPACE_SCHEMA_VERSION;
 
@@ -10,6 +11,7 @@ export type SavedView = {
   id: string;
   canvasId: string;
   name: string;
+  description?: string;
   order: number;
   rect: {
     x: number;
@@ -134,6 +136,13 @@ export type WorkspaceSettings = {
   schemaVersion: WorkspaceSchemaVersion;
 };
 
+export type WorkspaceProfile = {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type WorkspaceExport = {
   type: typeof WORKSPACE_EXPORT_TYPE;
   schemaVersion: WorkspaceSchemaVersion;
@@ -141,6 +150,19 @@ export type WorkspaceExport = {
   project: ProjectRecord;
   canvases: CanvasRecord[];
   files: WorkspaceFileRecord[];
+};
+
+export type WorkspaceBackup = {
+  type: typeof WORKSPACE_BACKUP_TYPE;
+  schemaVersion: WorkspaceSchemaVersion;
+  exportedAt: number;
+  scope: "profile" | "all-profiles";
+  includeSettings: boolean;
+  profiles: Array<{
+    profile: WorkspaceProfile;
+    settings?: WorkspaceSettings;
+    projects: WorkspaceExport[];
+  }>;
 };
 
 export type WorkspaceAIProvider = {

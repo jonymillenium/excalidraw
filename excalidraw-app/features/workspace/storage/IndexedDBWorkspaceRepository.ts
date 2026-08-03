@@ -63,13 +63,13 @@ const transactionToPromise = (transaction: IDBTransaction) =>
     transaction.onabort = () => reject(transaction.error);
   });
 
-const openDatabase = () =>
+const openDatabase = (databaseName: string) =>
   new Promise<IDBDatabase>((resolve, reject) => {
     if (!globalThis.indexedDB) {
       reject(new Error("IndexedDB no está disponible en este navegador."));
       return;
     }
-    const request = indexedDB.open(WORKSPACE_DB_NAME, WORKSPACE_DB_VERSION);
+    const request = indexedDB.open(databaseName, WORKSPACE_DB_VERSION);
     request.onerror = () => reject(request.error);
     request.onblocked = () =>
       reject(
@@ -183,8 +183,12 @@ const normalizeStorageError = (error: unknown): Error => {
 export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
   private readonly database: Promise<IDBDatabase>;
 
-  constructor(database = openDatabase()) {
-    this.database = database;
+  constructor(databaseName = WORKSPACE_DB_NAME) {
+    this.database = openDatabase(databaseName);
+  }
+
+  async close() {
+    (await this.database).close();
   }
 
   private async getProjectRecord(id: string) {
@@ -1135,4 +1139,41 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
   }
 }
 
-export const workspaceRepository = new IndexedDBWorkspaceRepository();
+export const getProfileDatabaseName = (profileId: string) =>
+  profileId === "default"
+    ? WORKSPACE_DB_NAME
+    : `${WORKSPACE_DB_NAME}-profile-${profileId}`;
+
+const profileRepositories = new Map<string, IndexedDBWorkspaceRepository>();
+
+export const getWorkspaceRepository = (profileId = "default") => {
+  let repository = profileRepositories.get(profileId);
+  if (!repository) {
+    repository = new IndexedDBWorkspaceRepository(
+      getProfileDatabaseName(profileId),
+    );
+    profileRepositories.set(profileId, repository);
+  }
+  return repository;
+};
+
+export const deleteWorkspaceProfileDatabase = async (profileId: string) => {
+  const repository = profileRepositories.get(profileId);
+  if (repository) {
+    await repository.close();
+    profileRepositories.delete(profileId);
+  }
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(getProfileDatabaseName(profileId));
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () =>
+      reject(
+        new Error(
+          "No se pudo eliminar el perfil porque sigue abierto en otra ventana.",
+        ),
+      );
+  });
+};
+
+export const workspaceRepository = getWorkspaceRepository();
