@@ -18,7 +18,7 @@ import { Excalidraw } from "../index";
 
 import { API } from "./helpers/api";
 import { UI } from "./helpers/ui";
-import { fireEvent, render, waitFor } from "./test-utils";
+import { fireEvent, render, screen, waitFor } from "./test-utils";
 
 import type { LibraryItem, LibraryItems } from "../types";
 
@@ -243,6 +243,44 @@ describe("library", () => {
 });
 
 describe("library menu", () => {
+  it("renames an existing library item from its visible name", async () => {
+    const libraryItem: LibraryItem = {
+      id: "renamable-library-item",
+      status: "unpublished",
+      elements: [API.createElement({ type: "rectangle" })],
+      created: 1,
+      name: "Nombre anterior",
+      folderPath: ["Marketing"],
+    };
+    const { container } = await render(
+      <Excalidraw initialData={{ libraryItems: [libraryItem] }} />,
+    );
+
+    fireEvent.click(container.querySelector(".sidebar-trigger")!);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Marketing",
+      }),
+    );
+
+    const renameButton = await screen.findByRole("button", {
+      name: "Rename asset: Nombre anterior",
+    });
+    fireEvent.click(renameButton);
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Name this library item" }),
+      { target: { value: "Hero de campaña" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+    await waitFor(async () => {
+      const [renamedItem] = await h.app.library.getLatestLibrary();
+      expect(renamedItem.name).toBe("Hero de campaña");
+      expect(renamedItem.folderPath).toEqual(["Marketing"]);
+    });
+  });
+
   it("should load library from file picker", async () => {
     const { container } = await render(<Excalidraw />);
 

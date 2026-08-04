@@ -1,9 +1,11 @@
-import { LIBRARY_DISABLED_TYPES, randomId } from "@excalidraw/common";
+import { LIBRARY_DISABLED_TYPES } from "@excalidraw/common";
 import { deepCopyElement } from "@excalidraw/element";
 
 import { CaptureUpdateAction } from "@excalidraw/element";
 
 import { t } from "../i18n";
+import { addToLibraryDialogAtom } from "../components/AddToLibraryDialog";
+import { editorJotaiStore } from "../editor-jotai";
 
 import { register } from "./register";
 
@@ -29,43 +31,14 @@ export const actionAddToLibrary = register({
       }
     }
 
-    // The sidebar flow asks for a custom name before saving. The context-menu
-    // shortcut stays one-click and still guarantees searchable metadata.
-    const name = t("library.naming.defaultName");
+    editorJotaiStore.set(
+      addToLibraryDialogAtom,
+      selectedElements.map(deepCopyElement),
+    );
 
-    return app.library
-      .getLatestLibrary()
-      .then((items) => {
-        return app.library.setLibrary([
-          {
-            id: randomId(),
-            status: "unpublished",
-            elements: selectedElements.map(deepCopyElement),
-            created: Date.now(),
-            name,
-            folderPath: [],
-          },
-          ...items,
-        ]);
-      })
-      .then(() => {
-        return {
-          captureUpdate: CaptureUpdateAction.EVENTUALLY,
-          appState: {
-            ...appState,
-            toast: { message: t("toast.addedToLibrary") },
-          },
-        };
-      })
-      .catch((error) => {
-        return {
-          captureUpdate: CaptureUpdateAction.EVENTUALLY,
-          appState: {
-            ...appState,
-            errorMessage: error.message,
-          },
-        };
-      });
+    return {
+      captureUpdate: CaptureUpdateAction.NEVER,
+    };
   },
   label: "labels.addToLibrary",
 });

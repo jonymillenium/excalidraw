@@ -24,6 +24,7 @@ export const LibraryUnit = memo(
     selected,
     onToggle,
     onDrag,
+    onRename,
     svgCache,
   }: {
     id: LibraryItem["id"] | /** for pending item */ null;
@@ -35,6 +36,7 @@ export const LibraryUnit = memo(
     selected: boolean;
     onToggle: (id: string, event: React.MouseEvent) => void;
     onDrag: (id: string, event: React.DragEvent) => void;
+    onRename?: (id: LibraryItem["id"]) => void;
     svgCache: SvgCache;
   }) => {
     const ref = useRef<HTMLDivElement | null>(null);
@@ -102,11 +104,25 @@ export const LibraryUnit = memo(
             />
           )}
         </div>
-        <span className="library-unit__name">
-          {isPending
-            ? t("library.naming.add")
-            : name || t("library.naming.unnamed")}
-        </span>
+        {id && onRename ? (
+          <button
+            type="button"
+            className="library-unit__name library-unit__rename"
+            onClick={() => onRename(id)}
+            aria-label={`${t("library.naming.rename")}: ${
+              name || t("library.naming.unnamed")
+            }`}
+            title={t("library.naming.rename")}
+          >
+            {name || t("library.naming.unnamed")}
+          </button>
+        ) : (
+          <span className="library-unit__name">
+            {isPending
+              ? t("library.naming.add")
+              : name || t("library.naming.unnamed")}
+          </span>
+        )}
       </div>
     );
   },

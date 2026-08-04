@@ -205,6 +205,7 @@
     "hint_emptyPrivateLibrary": "Select an item on canvas to add it here.",
     "naming": {
       "prompt": "Name this library item",
+      "description": "Choose a clear name and where you want to save it.",
       "defaultName": "New asset",
       "add": "Add",
       "rename": "Rename asset",
@@ -212,6 +213,7 @@
     },
     "folders": {
       "root": "Library",
+      "destination": "Save in",
       "new": "New folder",
       "prompt": "Folder name",
       "create": "Create folder",

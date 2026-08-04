@@ -199,6 +199,7 @@
     "hint_emptyPrivateLibrary": "Seleccione un elemento del lienzo para añadirlo aquí.",
     "naming": {
       "prompt": "Ponle un nombre a este elemento de biblioteca",
+      "description": "Elige un nombre claro y dónde quieres guardarlo.",
       "defaultName": "Nuevo asset",
       "add": "Añadir",
       "rename": "Renombrar asset",
@@ -206,6 +207,7 @@
     },
     "folders": {
       "root": "Biblioteca",
+      "destination": "Guardar en",
       "new": "Nueva carpeta",
       "prompt": "Nombre de la carpeta",
       "create": "Crear carpeta",

@@ -1,6 +1,6 @@
 {
   "name": "xcalidraw-desktop",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "private": true,
   "author": "Kurk",
   "description": "Aplicación macOS local-first para Xcalidraw",

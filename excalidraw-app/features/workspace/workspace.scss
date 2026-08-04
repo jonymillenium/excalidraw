@@ -1660,6 +1660,18 @@ body[data-workspace-accent-intensity="subtle"] .workspace-accent-lines {
       &:disabled {
         cursor: default;
       }
+
+      &.is-editing {
+        width: clamp(10rem, 24vw, 28rem);
+        padding-inline: 0.45rem;
+        border-color: var(--workspace-primary);
+        color: var(--workspace-text);
+        background: var(--workspace-bg);
+        cursor: text;
+        outline: 2px solid
+          color-mix(in srgb, var(--workspace-primary) 18%, transparent);
+        outline-offset: 1px;
+      }
     }
   }
 

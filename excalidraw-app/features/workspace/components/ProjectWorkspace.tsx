@@ -76,6 +76,7 @@ import { CanvasColorProfilesDialog } from "./CanvasColorProfilesDialog";
 import { OpenRouterDialog } from "./OpenRouterDialog";
 import { WorkspaceReferencesDialog } from "./WorkspaceReferencesDialog";
 import { useWorkspacePrompts } from "./WorkspacePromptDialog";
+import { InlineCanvasName } from "./InlineCanvasName";
 
 import type {
   CanvasSummary,
@@ -1017,20 +1018,11 @@ export const ProjectWorkspace = ({
     }
   };
 
-  const renameWorkspaceCanvas = async (canvas: CanvasSummary) => {
+  const commitCanvasName = async (canvas: CanvasSummary, value: string) => {
     if (readOnly) {
       return;
     }
-    const name = await askText({
-      title: "Renombrar lienzo",
-      description:
-        "El nuevo nombre se reflejará en el proyecto y en sus referencias.",
-      label: "Nombre del lienzo",
-      initialValue: canvas.name,
-      confirmLabel: "Guardar nombre",
-      maxLength: 120,
-    });
-    const nextName = name?.trim();
+    const nextName = value.trim();
     if (!nextName || nextName === canvas.name) {
       return;
     }
@@ -1049,6 +1041,24 @@ export const ProjectWorkspace = ({
           ? renameError.message
           : "No se pudo renombrar el lienzo.",
       );
+    }
+  };
+
+  const renameWorkspaceCanvas = async (canvas: CanvasSummary) => {
+    if (readOnly) {
+      return;
+    }
+    const name = await askText({
+      title: "Renombrar lienzo",
+      description:
+        "El nuevo nombre se reflejará en el proyecto y en sus referencias.",
+      label: "Nombre del lienzo",
+      initialValue: canvas.name,
+      confirmLabel: "Guardar nombre",
+      maxLength: 120,
+    });
+    if (name !== null) {
+      await commitCanvasName(canvas, name);
     }
   };
 
@@ -1307,22 +1317,11 @@ export const ProjectWorkspace = ({
               <div className="project-workspace__path">
                 <strong>{project.name}</strong>
                 <span aria-hidden="true">/</span>
-                <button
-                  type="button"
-                  className="project-workspace__canvas-name"
+                <InlineCanvasName
+                  name={loadedCanvas.name}
                   disabled={readOnly}
-                  onDoubleClick={() => void renameWorkspaceCanvas(loadedCanvas)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === "F2") {
-                      event.preventDefault();
-                      void renameWorkspaceCanvas(loadedCanvas);
-                    }
-                  }}
-                  aria-label={`Renombrar lienzo ${loadedCanvas.name}`}
-                  title="Doble clic para renombrar"
-                >
-                  {loadedCanvas.name}
-                </button>
+                  onSave={(name) => commitCanvasName(loadedCanvas, name)}
+                />
               </div>
               <div className="project-workspace__status" role="status">
                 <span className={`save-status save-status--${saveStatus}`}>

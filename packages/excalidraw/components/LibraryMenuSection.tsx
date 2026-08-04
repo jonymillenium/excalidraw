@@ -23,6 +23,7 @@ interface Props {
   onClick: (id: LibraryItem["id"] | null) => void;
   onItemSelectToggle: (id: LibraryItem["id"], event: React.MouseEvent) => void;
   onItemDrag: (id: LibraryItem["id"], event: React.DragEvent) => void;
+  onItemRename?: (id: LibraryItem["id"]) => void;
   isItemSelected: (id: LibraryItem["id"] | null) => boolean;
   svgCache: SvgCache;
   itemsRenderedPerBatch: number;
@@ -41,6 +42,7 @@ export const LibraryMenuSection = memo(
     items,
     onItemSelectToggle,
     onItemDrag,
+    onItemRename,
     isItemSelected,
     onClick,
     svgCache,
@@ -72,6 +74,7 @@ export const LibraryMenuSection = memo(
               selected={isItemSelected(item.id)}
               onToggle={onItemSelectToggle}
               onDrag={onItemDrag}
+              onRename={onItemRename}
               key={item?.id ?? i}
             />
           ) : (

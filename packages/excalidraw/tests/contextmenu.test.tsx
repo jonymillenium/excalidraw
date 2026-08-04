@@ -6,6 +6,7 @@ import { KEYS, STROKE_WIDTH, reseed } from "@excalidraw/common";
 import { setDateTimeForTests } from "@excalidraw/common";
 
 import { copiedStyles } from "../actions/actionStyles";
+import { LIBRARY_FOLDERS_STORAGE_KEY } from "../data/libraryFolders";
 import { Excalidraw } from "../index";
 import * as StaticScene from "../renderer/staticScene";
 
@@ -405,6 +406,11 @@ describe("contextMenu element", () => {
     mouse.down(0, 0);
     mouse.up(10, 10);
 
+    localStorage.setItem(
+      LIBRARY_FOLDERS_STORAGE_KEY,
+      JSON.stringify([["Marketing", "Campañas"]]),
+    );
+
     fireEvent.contextMenu(GlobalTestState.interactiveCanvas, {
       button: 2,
       clientX: 3,
@@ -413,8 +419,24 @@ describe("contextMenu element", () => {
     const contextMenu = UI.queryContextMenu();
     fireEvent.click(queryByText(contextMenu!, "Add to library")!);
 
+    expect(await h.app.library.getLatestLibrary()).toHaveLength(0);
+    expect(
+      screen.getByRole("heading", { name: "Name this library item" }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Name this library item" }),
+      { target: { value: "Hero de campaña" } },
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Save in" }), {
+      target: { value: "Marketing\u001fCampañas" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
     await waitFor(async () => {
       const libraryItems = await h.app.library.getLatestLibrary();
+      expect(libraryItems[0].name).toBe("Hero de campaña");
+      expect(libraryItems[0].folderPath).toEqual(["Marketing", "Campañas"]);
       expect(libraryItems[0].elements[0]).toEqual(h.elements[0]);
     });
   });

@@ -13,6 +13,14 @@ import { duplicateElements } from "@excalidraw/element";
 import clsx from "clsx";
 
 import { deburr } from "../deburr";
+import {
+  collectLibraryFolders,
+  isSameLibraryFolder,
+  libraryFolderPathKey,
+  loadCreatedLibraryFolders,
+  normalizeLibraryFolderName,
+  saveCreatedLibraryFolders,
+} from "../data/libraryFolders";
 
 import { useLibraryCache } from "../hooks/useLibraryItemSvg";
 import { useScrollPosition } from "../hooks/useScrollPosition";
@@ -52,22 +60,6 @@ const ITEMS_RENDERED_PER_BATCH = 17;
 // when render outputs cached we can render many more items per batch to
 // speed it up
 const CACHED_ITEMS_RENDERED_PER_BATCH = 64;
-const LIBRARY_FOLDERS_STORAGE_KEY = "excalidraw-library-folders:v1";
-
-const folderPathKey = (path: readonly string[]) => path.join("\u001f");
-
-const sameFolderPath = (
-  first: readonly string[] | undefined,
-  second: readonly string[],
-) => folderPathKey(first ?? []) === folderPathKey(second);
-
-const normalizeFolderName = (name: string) =>
-  name
-    .trim()
-    .replace(/[\\/]+/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, 80);
-
 export default function LibraryMenuItems({
   isLoading,
   libraryItems,
@@ -115,23 +107,7 @@ export default function LibraryMenuItems({
   const [searchInputValue, setSearchInputValue] = useState("");
   const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
   const [createdFolderPaths, setCreatedFolderPaths] = useState<string[][]>(
-    () => {
-      try {
-        const persisted = window.localStorage.getItem(
-          LIBRARY_FOLDERS_STORAGE_KEY,
-        );
-        const parsed = persisted ? JSON.parse(persisted) : [];
-        return Array.isArray(parsed)
-          ? parsed.filter(
-              (path): path is string[] =>
-                Array.isArray(path) &&
-                path.every((part) => typeof part === "string"),
-            )
-          : [];
-      } catch {
-        return [];
-      }
-    },
+    loadCreatedLibraryFolders,
   );
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [assetName, setAssetName] = useState("");
@@ -143,30 +119,13 @@ export default function LibraryMenuItems({
   const [renameItemName, setRenameItemName] = useState("");
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        LIBRARY_FOLDERS_STORAGE_KEY,
-        JSON.stringify(createdFolderPaths),
-      );
-    } catch {
-      // Folder paths on items remain the portable source of truth.
-    }
+    saveCreatedLibraryFolders(createdFolderPaths);
   }, [createdFolderPaths]);
 
-  const allFolderPaths = useMemo(() => {
-    const folders = new Map<string, string[]>();
-    for (const path of createdFolderPaths) {
-      folders.set(folderPathKey(path), path);
-    }
-    for (const item of libraryItems) {
-      const path = item.folderPath ?? [];
-      for (let depth = 1; depth <= path.length; depth++) {
-        const prefix = path.slice(0, depth);
-        folders.set(folderPathKey(prefix), [...prefix]);
-      }
-    }
-    return [...folders.values()];
-  }, [createdFolderPaths, libraryItems]);
+  const allFolderPaths = useMemo(
+    () => collectLibraryFolders(libraryItems, createdFolderPaths),
+    [createdFolderPaths, libraryItems],
+  );
 
   const childFolders = useMemo(() => {
     const names = new Set<string>();
@@ -207,7 +166,7 @@ export default function LibraryMenuItems({
       libraryItems.filter(
         (item) =>
           item.status !== "published" &&
-          sameFolderPath(item.folderPath, activeFolderPath),
+          isSameLibraryFolder(item.folderPath, activeFolderPath),
       ),
     [activeFolderPath, libraryItems],
   );
@@ -217,7 +176,7 @@ export default function LibraryMenuItems({
       libraryItems.filter(
         (item) =>
           item.status === "published" &&
-          sameFolderPath(item.folderPath, activeFolderPath),
+          isSameLibraryFolder(item.folderPath, activeFolderPath),
       ),
     [activeFolderPath, libraryItems],
   );
@@ -366,17 +325,20 @@ export default function LibraryMenuItems({
     selectedItems,
   ]);
 
-  const renameSelected = useCallback(() => {
-    if (selectedItems.length !== 1) {
-      return;
-    }
-    const selected = libraryItems.find((item) => item.id === selectedItems[0]);
-    if (!selected) {
-      return;
-    }
-    setRenameItemId(selected.id);
-    setRenameItemName(selected.name ?? "");
-  }, [libraryItems, selectedItems]);
+  const renameItem = useCallback(
+    (id: LibraryItem["id"] | undefined) => {
+      if (!id) {
+        return;
+      }
+      const selected = libraryItems.find((item) => item.id === id);
+      if (!selected) {
+        return;
+      }
+      setRenameItemId(selected.id);
+      setRenameItemName(selected.name ?? "");
+    },
+    [libraryItems],
+  );
 
   const onItemClick = useCallback(
     (id: LibraryItem["id"] | null) => {
@@ -396,7 +358,7 @@ export default function LibraryMenuItems({
       : ITEMS_RENDERED_PER_BATCH;
   const canMoveSelectionHere = selectedItems.some((selectedId) => {
     const item = libraryItems.find((candidate) => candidate.id === selectedId);
-    return item && !sameFolderPath(item.folderPath, activeFolderPath);
+    return item && !isSameLibraryFolder(item.folderPath, activeFolderPath);
   });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -416,7 +378,7 @@ export default function LibraryMenuItems({
           </button>
           {activeFolderPath.map((folder, index) => (
             <React.Fragment
-              key={folderPathKey(activeFolderPath.slice(0, index + 1))}
+              key={libraryFolderPathKey(activeFolderPath.slice(0, index + 1))}
             >
               <span>/</span>
               <button
@@ -440,7 +402,7 @@ export default function LibraryMenuItems({
             </button>
           )}
           {selectedItems.length === 1 && (
-            <button type="button" onClick={renameSelected}>
+            <button type="button" onClick={() => renameItem(selectedItems[0])}>
               {t("library.folders.rename")}
             </button>
           )}
@@ -503,6 +465,7 @@ export default function LibraryMenuItems({
             items={unpublishedItems}
             onItemSelectToggle={onItemSelectToggle}
             onItemDrag={onItemDrag}
+            onItemRename={renameItem}
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
@@ -525,6 +488,7 @@ export default function LibraryMenuItems({
             items={publishedItems}
             onItemSelectToggle={onItemSelectToggle}
             onItemDrag={onItemDrag}
+            onItemRename={renameItem}
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
@@ -558,6 +522,7 @@ export default function LibraryMenuItems({
             items={filteredItems}
             onItemSelectToggle={onItemSelectToggle}
             onItemDrag={onItemDrag}
+            onItemRename={renameItem}
             onClick={onItemClick}
             isItemSelected={isItemSelected}
             svgCache={svgCache}
@@ -701,14 +666,16 @@ export default function LibraryMenuItems({
             className="library-name-dialog"
             onSubmit={(event) => {
               event.preventDefault();
-              const normalizedName = normalizeFolderName(folderName);
+              const normalizedName = normalizeLibraryFolderName(folderName);
               if (!normalizedName) {
                 return;
               }
               const path = [...activeFolderPath, normalizedName];
               setCreatedFolderPaths((current) => {
-                const key = folderPathKey(path);
-                return current.some((folder) => folderPathKey(folder) === key)
+                const key = libraryFolderPathKey(path);
+                return current.some(
+                  (folder) => libraryFolderPathKey(folder) === key,
+                )
                   ? current
                   : [...current, path];
               });
