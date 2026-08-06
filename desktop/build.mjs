@@ -72,6 +72,9 @@ try {
       builderCli,
       "--mac",
       "dmg",
+      "zip",
+      "--publish",
+      "never",
       `--config.directories.output=${temporaryOutput}`,
     ],
     { cwd: desktopDirectory, stdio: "inherit" },
@@ -82,7 +85,11 @@ try {
     const outputDirectory = path.join(desktopDirectory, "dist");
     await mkdir(outputDirectory, { recursive: true });
     const artifacts = (await readdir(temporaryOutput)).filter(
-      (name) => name.endsWith(".dmg") || name.endsWith(".dmg.blockmap"),
+      (name) =>
+        name.endsWith(".dmg") ||
+        name.endsWith(".blockmap") ||
+        name.endsWith(".zip") ||
+        name === "latest-mac.yml",
     );
     if (!artifacts.some((name) => name.endsWith(".dmg"))) {
       throw new Error("electron-builder no generó el instalador DMG esperado.");

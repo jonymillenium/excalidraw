@@ -823,6 +823,8 @@ export interface ExcalidrawProps {
     isMobile: boolean,
     appState: UIAppState,
   ) => JSX.Element | null;
+  /** Host controls rendered immediately after the desktop zoom controls. */
+  renderBottomLeftUI?: (appState: UIAppState) => JSX.Element | null;
   /**
    * Host actions rendered as first-class tools in the floating toolbar.
    * Desktop/tablet render icon buttons in the toolbar island; phone layouts

@@ -40,6 +40,7 @@ interface ImportMetaEnv {
   VITE_APP_VERSION: string;
   VITE_APP_UPDATE_REPOSITORY: string;
   VITE_APP_UPDATE_BRANCH: string;
+  VITE_APP_UNSPLASH_ACCESS_KEY?: string;
 
   MODE: string;
 

@@ -19,7 +19,7 @@ import type { Bounds } from "@excalidraw/common";
 import { getDefaultAppState } from "../appState";
 import { ColorPicker } from "../components/ColorPicker/ColorPicker";
 import { IconButton } from "../components/IconButton";
-import { Tooltip } from "../components/Tooltip";
+import { ZoomMenu } from "../components/ZoomMenu";
 import {
   MoonIcon,
   SunIcon,
@@ -254,22 +254,19 @@ export const actionResetZoom = register({
       captureUpdate: CaptureUpdateAction.EVENTUALLY,
     };
   },
-  PanelComponent: ({ updateData }) => {
+  PanelComponent: ({ updateData, executeAction, appState }) => {
     const zoomValue = useAppStateValue((appState) => appState.zoom.value);
     return (
-      <Tooltip label={t("buttons.resetZoom")} style={{ height: "100%" }}>
-        <IconButton
-          type="button"
-          className="reset-zoom-button zoom-button"
-          title={t("buttons.resetZoom")}
-          aria-label={t("buttons.resetZoom")}
-          onClick={() => {
-            updateData(null);
-          }}
-        >
-          {(zoomValue * 100).toFixed(0)}%
-        </IconButton>
-      </Tooltip>
+      <ZoomMenu
+        zoomValue={zoomValue}
+        selectionAvailable={!!Object.keys(appState.selectedElementIds).length}
+        onReset={() => updateData(null)}
+        onZoomToFit={() => executeAction("zoomToFit")}
+        onZoomToSelection={() => executeAction("zoomToFitSelection")}
+        onZoomToFitViewport={() =>
+          executeAction("zoomToFitSelectionInViewport")
+        }
+      />
     );
   },
   keyTest: (event) =>

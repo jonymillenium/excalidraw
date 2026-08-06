@@ -70,10 +70,18 @@ import {
 import { CanvasLease } from "../services/canvasLease";
 import { downloadProject } from "../services/projectTransfer";
 import { generateMermaidWithOpenRouter } from "../services/openRouter";
+import {
+  normalizeCuratedLibraryItems,
+  type CuratedLibrary,
+} from "../services/curatedLibraries";
 
 import { SavedViewDialog } from "./SavedViewDialog";
 import { CanvasColorProfilesDialog } from "./CanvasColorProfilesDialog";
 import { OpenRouterDialog } from "./OpenRouterDialog";
+import {
+  PublicAssetsDialog,
+  type PublicAssetSelection,
+} from "./PublicAssetsDialog";
 import { WorkspaceReferencesDialog } from "./WorkspaceReferencesDialog";
 import { useWorkspacePrompts } from "./WorkspacePromptDialog";
 import { InlineCanvasName } from "./InlineCanvasName";
@@ -122,11 +130,18 @@ type WorkspaceToolbarIconName =
   | "more";
 
 const WorkspaceToolbarIcon = ({ name }: { name: WorkspaceToolbarIconName }) => {
-  if (name === "canvases" || name === "views") {
+  if (name === "canvases") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <rect x="3" y="3" width="18" height="18" rx="3" />
-        <path d={name === "canvases" ? "M9 3v18" : "M15 3v18"} />
+        <path d="M9 3v18" />
+      </svg>
+    );
+  }
+  if (name === "views") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 6.5h14M5 12h14M5 17.5h14" />
       </svg>
     );
   }
@@ -180,6 +195,46 @@ const WorkspaceLibraryIcon = () => (
   </svg>
 );
 
+const PublicAssetsIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="20"
+    height="20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <circle cx="8.5" cy="9" r="1.5" />
+    <path d="m5.5 17 4.3-4.3 2.8 2.8 2.1-2.1 3.8 3.6" />
+  </svg>
+);
+
+const readBlobAsDataURL = (blob: Blob) =>
+  new Promise<DataURL>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el recurso."));
+    reader.onload = () => resolve(reader.result as DataURL);
+    reader.readAsDataURL(blob);
+  });
+
+const readImageDimensions = (dataURL: DataURL) =>
+  new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image();
+    image.onerror = () =>
+      reject(new Error("El recurso no contiene una imagen compatible."));
+    image.onload = () =>
+      resolve({
+        width: image.naturalWidth || image.width,
+        height: image.naturalHeight || image.height,
+      });
+    image.src = dataURL;
+  });
+
 const keepOnlyCurrentToolbarMenuOpen = (
   event: SyntheticEvent<HTMLDetailsElement>,
 ) => {
@@ -213,6 +268,9 @@ const EditorCanvas = ({
   onStatus,
   onOpenReference,
   onBrowseReferences,
+  onBrowsePublicAssets,
+  viewsOpen,
+  onToggleViews,
 }: {
   repository: WorkspaceRepository;
   projectId: string;
@@ -230,6 +288,9 @@ const EditorCanvas = ({
   onStatus: (status: SaveStatus, error?: Error) => void;
   onOpenReference: (target: WorkspaceReferenceTarget) => void;
   onBrowseReferences: () => void;
+  onBrowsePublicAssets: () => void;
+  viewsOpen: boolean;
+  onToggleViews: () => void;
 }) => {
   const [editorApi, setEditorApi] = useState<ExcalidrawImperativeAPI | null>(
     null,
@@ -417,6 +478,21 @@ const EditorCanvas = ({
         }
         theme={theme}
         onThemeChange={setThemePreference}
+        renderBottomLeftUI={() => (
+          <button
+            className={`workspace-views-control${
+              viewsOpen ? " is-active" : ""
+            }`}
+            type="button"
+            onClick={onToggleViews}
+            aria-label={viewsOpen ? "Ocultar vistas" : "Mostrar vistas"}
+            aria-controls="views-sidebar"
+            aria-expanded={viewsOpen}
+            title={viewsOpen ? "Ocultar vistas" : "Mostrar vistas"}
+          >
+            <WorkspaceToolbarIcon name="views" />
+          </button>
+        )}
         toolbarActions={
           presentation
             ? undefined
@@ -426,6 +502,13 @@ const EditorCanvas = ({
                   label: "Biblioteca de proyectos, lienzos y vistas",
                   icon: <WorkspaceLibraryIcon />,
                   onSelect: () => onBrowseReferences(),
+                  disabled: readOnly,
+                },
+                {
+                  id: "public-assets",
+                  label: "Iconos y fotos",
+                  icon: <PublicAssetsIcon />,
+                  onSelect: () => onBrowsePublicAssets(),
                   disabled: readOnly,
                 },
               ]
@@ -556,13 +639,14 @@ export const ProjectWorkspace = ({
   onVerifyProfilePassword,
   onBack,
   onNavigateCanvas,
+  onNavigateEmpty,
   onNavigateReference,
   onLock,
   onProjectChanged,
 }: {
   repository: WorkspaceRepository;
   projectId: string;
-  canvasId: string;
+  canvasId?: string;
   targetViewId?: string;
   projectKey?: CryptoKey;
   profileId: string;
@@ -572,6 +656,7 @@ export const ProjectWorkspace = ({
   onVerifyProfilePassword: (password: string) => Promise<CryptoKey>;
   onBack: () => void;
   onNavigateCanvas: (canvasId: string) => void;
+  onNavigateEmpty: () => void;
   onNavigateReference: (
     projectId: string,
     canvasId: string,
@@ -593,6 +678,7 @@ export const ProjectWorkspace = ({
   >(() => normalizeCanvasColorProfiles());
   const [showColorProfiles, setShowColorProfiles] = useState(false);
   const [showOpenRouter, setShowOpenRouter] = useState(false);
+  const [showPublicAssets, setShowPublicAssets] = useState(false);
   const [referenceDialog, setReferenceDialog] = useState<
     | { mode: "browse" }
     | { mode: "preview"; target: WorkspaceReferenceTarget }
@@ -619,6 +705,13 @@ export const ProjectWorkspace = ({
   const leaseRef = useRef(new CanvasLease());
   const openedTargetViewRef = useRef<string | undefined>(undefined);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleViewsPanel = useCallback(() => {
+    if (!rightOpen) {
+      setLeftOpen(false);
+    }
+    setRightOpen(!rightOpen);
+  }, [rightOpen]);
 
   useEffect(() => setActiveProfileKey(profileKey), [profileKey]);
 
@@ -687,9 +780,16 @@ export const ProjectWorkspace = ({
     setError(undefined);
     void refreshMetadata()
       .then(async (nextCanvases) => {
-        if (!nextCanvases.some((canvas) => canvas.id === canvasId)) {
+        if (
+          !canvasId ||
+          !nextCanvases.some((canvas) => canvas.id === canvasId)
+        ) {
           if (nextCanvases[0]) {
             onNavigateCanvas(nextCanvases[0].id);
+          } else if (active) {
+            setLoadedCanvas(null);
+            setApi(null);
+            setReadOnly(false);
           }
           return;
         }
@@ -834,7 +934,7 @@ export const ProjectWorkspace = ({
             currentItemStrokeColor: profileToApply.elementColor,
           }
         : api.getAppState();
-      const elements =
+      let elements =
         profileToApply && applyToExistingElements
           ? api.getSceneElementsIncludingDeleted().map((element) =>
               "strokeColor" in element
@@ -844,6 +944,62 @@ export const ProjectWorkspace = ({
                 : element,
             )
           : api.getSceneElementsIncludingDeleted();
+
+      if (profileToApply && applyToExistingElements) {
+        const recoloredFiles: BinaryFileData[] = [];
+        elements = await Promise.all(
+          elements.map(async (element) => {
+            const publicAsset = element.customData?.publicAsset as
+              | {
+                  provider?: string;
+                  sourceUrl?: string;
+                  followsCanvasColor?: boolean;
+                  iconColor?: string;
+                }
+              | undefined;
+            if (
+              element.type !== "image" ||
+              !publicAsset?.followsCanvasColor ||
+              !publicAsset.sourceUrl
+            ) {
+              return element;
+            }
+            try {
+              const source = new URL(publicAsset.sourceUrl);
+              source.searchParams.set("color", profileToApply.elementColor);
+              const response = await fetch(source);
+              if (!response.ok) {
+                return element;
+              }
+              const blob = new Blob([await response.blob()], {
+                type: "image/svg+xml",
+              });
+              const fileId = randomId() as FileId;
+              recoloredFiles.push({
+                id: fileId,
+                dataURL: await readBlobAsDataURL(blob),
+                mimeType: "image/svg+xml" as BinaryFileData["mimeType"],
+                created: Date.now(),
+              });
+              return newElementWith(element, {
+                fileId,
+                customData: {
+                  ...element.customData,
+                  publicAsset: {
+                    ...publicAsset,
+                    iconColor: profileToApply.elementColor,
+                  },
+                },
+              });
+            } catch {
+              return element;
+            }
+          }),
+        );
+        if (recoloredFiles.length) {
+          api.addFiles(recoloredFiles);
+        }
+      }
 
       if (profileToApply || restoreFactoryStyle) {
         api.updateScene({
@@ -1014,6 +1170,112 @@ export const ProjectWorkspace = ({
         createError instanceof Error
           ? createError.message
           : "No se pudo crear el lienzo.",
+      );
+    }
+  };
+
+  const deleteWorkspaceCanvas = async (canvas: CanvasSummary) => {
+    if (readOnly) {
+      return;
+    }
+    const confirmed = await askConfirm({
+      title: `Eliminar “${canvas.name}”`,
+      description:
+        "Se eliminarán el lienzo, sus vistas y sus archivos locales. El proyecto puede quedar sin lienzos y esta acción no se puede deshacer.",
+      confirmLabel: "Eliminar lienzo",
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      const deletingActiveCanvas = canvas.id === canvasId;
+      if (deletingActiveCanvas) {
+        await flushAll();
+        leaseRef.current.release();
+        setLoadedCanvas(null);
+        setApi(null);
+        flushRef.current = async () => undefined;
+      }
+      await repository.deleteCanvas(projectId, canvas.id);
+      const remaining = await refreshMetadata();
+      onProjectChanged();
+      if (deletingActiveCanvas) {
+        if (remaining[0]) {
+          onNavigateCanvas(remaining[0].id);
+        } else {
+          onNavigateEmpty();
+        }
+      }
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "No se pudo eliminar el lienzo.",
+      );
+    }
+  };
+
+  const deleteAllCanvases = async () => {
+    if (readOnly || !canvases.length) {
+      return;
+    }
+    const confirmed = await askConfirm({
+      title: "Eliminar todos los lienzos",
+      description: `Se eliminarán los ${canvases.length} lienzos de “${
+        project?.name ?? "este proyecto"
+      }”, junto con sus vistas y archivos. El proyecto permanecerá vacío.`,
+      confirmLabel: "Eliminar todos los lienzos",
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await flushAll();
+      leaseRef.current.release();
+      setLoadedCanvas(null);
+      setApi(null);
+      flushRef.current = async () => undefined;
+      for (const canvas of canvases) {
+        await repository.deleteCanvas(projectId, canvas.id);
+      }
+      await refreshMetadata();
+      onProjectChanged();
+      onNavigateEmpty();
+    } catch (deleteError) {
+      await refreshMetadata().catch(() => undefined);
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "No se pudieron eliminar todos los lienzos.",
+      );
+    }
+  };
+
+  const deleteEmptyProject = async () => {
+    if (!project) {
+      return;
+    }
+    const confirmed = await askConfirm({
+      title: `Eliminar “${project.name}”`,
+      description:
+        "Este proyecto está vacío. Se eliminarán su configuración y sus datos locales. Esta acción no se puede deshacer.",
+      confirmLabel: "Eliminar proyecto",
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await repository.deleteProject(projectId);
+      onProjectChanged();
+      onBack();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "No se pudo eliminar el proyecto.",
       );
     }
   };
@@ -1192,6 +1454,100 @@ export const ProjectWorkspace = ({
     setReferenceDialog(null);
   };
 
+  const insertPublicAsset = async (selection: PublicAssetSelection) => {
+    if (!api || readOnly) {
+      return;
+    }
+    const response = await fetch(selection.sourceUrl);
+    if (!response.ok) {
+      throw new Error(`No se pudo descargar el recurso (${response.status}).`);
+    }
+    const sourceBlob = await response.blob();
+    const mimeType = selection.kind === "icon" ? "image/svg+xml" : "image/jpeg";
+    const blob =
+      sourceBlob.type === mimeType
+        ? sourceBlob
+        : new Blob([sourceBlob], { type: mimeType });
+    const dataURL = await readBlobAsDataURL(blob);
+    const dimensions = await readImageDimensions(dataURL);
+    const appState = api.getAppState();
+    const center = viewportCoordsToSceneCoords(
+      { clientX: appState.width / 2, clientY: appState.height / 2 },
+      appState,
+    );
+    const maximumWidth = selection.kind === "icon" ? 240 : 640;
+    const maximumHeight = selection.kind === "icon" ? 240 : 440;
+    const scale = Math.min(
+      maximumWidth / Math.max(dimensions.width, 1),
+      maximumHeight / Math.max(dimensions.height, 1),
+      selection.kind === "icon" ? 2 : 1,
+    );
+    const width = Math.max(24, Math.round(dimensions.width * scale));
+    const height = Math.max(24, Math.round(dimensions.height * scale));
+    const fileId = randomId() as FileId;
+    api.addFiles([
+      {
+        id: fileId,
+        dataURL,
+        mimeType: mimeType as BinaryFileData["mimeType"],
+        created: Date.now(),
+      },
+    ]);
+    const image = newImageElement({
+      type: "image",
+      x: center.x - width / 2,
+      y: center.y - height / 2,
+      width,
+      height,
+      fileId,
+      status: "saved",
+      customData: {
+        publicAsset: {
+          provider: selection.kind === "icon" ? "iconify" : "unsplash",
+          id: selection.id,
+          label: selection.label,
+          sourceUrl: selection.baseSourceUrl,
+          iconColor: selection.iconColor,
+          followsCanvasColor: selection.followsCanvasColor,
+        },
+      },
+    });
+    api.updateScene({
+      elements: [...api.getSceneElementsIncludingDeleted(), image],
+      appState: {
+        ...appState,
+        selectedElementIds: { [image.id]: true },
+        selectedGroupIds: {},
+      },
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    api.setActiveTool({ type: "selection" });
+  };
+
+  const installCuratedLibrary = async (library: CuratedLibrary) => {
+    if (!api || readOnly) {
+      return;
+    }
+    const response = await fetch(library.file);
+    if (!response.ok) {
+      throw new Error(
+        `No se pudo abrir “${library.name}” (${response.status}).`,
+      );
+    }
+    const libraryItems = normalizeCuratedLibraryItems(
+      library,
+      await response.json(),
+    );
+    await api.updateLibrary({
+      libraryItems: libraryItems as unknown as Parameters<
+        ExcalidrawImperativeAPI["updateLibrary"]
+      >[0]["libraryItems"],
+      merge: true,
+      openLibraryMenu: true,
+      defaultStatus: "published",
+    });
+  };
+
   const handleCanvasExport = async (format: CanvasExportFormat) => {
     if (!api) {
       return;
@@ -1240,6 +1596,70 @@ export const ProjectWorkspace = ({
   const handleFlushReady = useCallback((flush: () => Promise<void>) => {
     flushRef.current = flush;
   }, []);
+
+  if (project && canvases.length === 0 && !loadedCanvas) {
+    return (
+      <main className="project-workspace project-workspace--empty">
+        <header className="project-workspace__topbar">
+          <div className="project-workspace__breadcrumbs">
+            <button
+              className="workspace-icon-button project-workspace__back"
+              type="button"
+              onClick={onBack}
+              aria-label="Volver a proyectos"
+            >
+              ←
+            </button>
+            <div className="project-workspace__identity">
+              <div className="project-workspace__path">
+                <strong>{project.name}</strong>
+                <span aria-hidden="true">/</span>
+                <span>Sin lienzos</span>
+              </div>
+            </div>
+          </div>
+        </header>
+        <section className="project-empty-canvas" aria-labelledby="empty-title">
+          <div className="project-empty-canvas__art" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <p className="workspace-eyebrow">PROYECTO VACÍO</p>
+          <h1 id="empty-title">Crea tu primer lienzo</h1>
+          <p>
+            “{project.name}” seguirá disponible para que empieces de nuevo, o
+            puedes eliminar el proyecto completo.
+          </p>
+          {error && (
+            <div
+              className="workspace-alert workspace-alert--error"
+              role="alert"
+            >
+              {error}
+            </div>
+          )}
+          <div className="project-empty-canvas__actions">
+            <button
+              type="button"
+              className="workspace-button workspace-button--primary"
+              onClick={() => void createNewCanvas()}
+            >
+              + Crear primer lienzo
+            </button>
+            <button
+              type="button"
+              className="workspace-button workspace-button--danger"
+              onClick={() => void deleteEmptyProject()}
+            >
+              Eliminar proyecto
+            </button>
+          </div>
+        </section>
+        {promptDialog}
+      </main>
+    );
+  }
 
   if (!project || !loadedCanvas) {
     return (
@@ -1487,14 +1907,9 @@ export const ProjectWorkspace = ({
               </div>
             </details>
             <button
-              className="project-toolbar-button project-toolbar-button--icon"
+              className="project-toolbar-button project-toolbar-button--icon project-toolbar-button--views"
               type="button"
-              onClick={() => {
-                if (!rightOpen) {
-                  setLeftOpen(false);
-                }
-                setRightOpen((open) => !open);
-              }}
+              onClick={toggleViewsPanel}
               aria-label={rightOpen ? "Ocultar vistas" : "Mostrar vistas"}
               aria-controls="views-sidebar"
               aria-expanded={rightOpen}
@@ -1529,6 +1944,20 @@ export const ProjectWorkspace = ({
                 >
                   <strong>Apariencia del lienzo</strong>
                   <small>Perfiles de color y estilo original</small>
+                </button>
+                <button
+                  role="menuitem"
+                  className="workspace-menu__danger"
+                  disabled={readOnly || !canvases.length}
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    void deleteAllCanvases();
+                  }}
+                >
+                  <strong>Eliminar todos los lienzos</strong>
+                  <small>Conservar este proyecto como un espacio vacío</small>
                 </button>
                 {project.protection.enabled && (
                   <>
@@ -1648,25 +2077,8 @@ export const ProjectWorkspace = ({
                       </button>
                       <button
                         className="workspace-menu__danger"
-                        disabled={readOnly || canvases.length <= 1}
-                        onClick={async () => {
-                          const confirmed = await askConfirm({
-                            title: `Eliminar “${canvas.name}”`,
-                            description:
-                              "Se eliminarán el lienzo, sus vistas y sus archivos locales. Esta acción no se puede deshacer.",
-                            confirmLabel: "Eliminar lienzo",
-                            destructive: true,
-                          });
-                          if (!confirmed) {
-                            return;
-                          }
-                          await repository.deleteCanvas(projectId, canvas.id);
-                          const remaining = await refreshMetadata();
-                          onProjectChanged();
-                          if (canvas.id === canvasId && remaining[0]) {
-                            onNavigateCanvas(remaining[0].id);
-                          }
-                        }}
+                        disabled={readOnly}
+                        onClick={() => void deleteWorkspaceCanvas(canvas)}
                       >
                         Eliminar
                       </button>
@@ -1701,6 +2113,9 @@ export const ProjectWorkspace = ({
               setReferenceDialog({ mode: "preview", target })
             }
             onBrowseReferences={() => setReferenceDialog({ mode: "browse" })}
+            onBrowsePublicAssets={() => setShowPublicAssets(true)}
+            viewsOpen={rightOpen}
+            onToggleViews={toggleViewsPanel}
           />
         </section>
 
@@ -2096,11 +2511,24 @@ export const ProjectWorkspace = ({
         />
       )}
 
+      {showPublicAssets && api && !presentation && (
+        <PublicAssetsDialog
+          profileId={profileId}
+          defaultIconColor={
+            api.getAppState().currentItemStrokeColor ??
+            DEFAULT_CANVAS_ELEMENT_COLOR
+          }
+          onInsert={insertPublicAsset}
+          onInstallLibrary={installCuratedLibrary}
+          onClose={() => setShowPublicAssets(false)}
+        />
+      )}
+
       {referenceDialog && !presentation && (
         <WorkspaceReferencesDialog
           repository={repository}
           currentProjectId={projectId}
-          currentCanvasId={canvasId}
+          currentCanvasId={canvasId ?? loadedCanvas.id}
           currentProjectKey={projectKey}
           initialTarget={
             referenceDialog.mode === "preview"

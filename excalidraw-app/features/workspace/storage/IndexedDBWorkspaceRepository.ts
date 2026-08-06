@@ -794,9 +794,6 @@ export class IndexedDBWorkspaceRepository implements WorkspaceRepository {
 
   async deleteCanvas(projectId: string, canvasId: string) {
     const canvases = await this.getCanvasRecords(projectId);
-    if (canvases.length <= 1) {
-      throw new Error("Un proyecto debe conservar al menos un lienzo.");
-    }
     const files = await this.getFileRecords(projectId, canvasId);
     const db = await this.database;
     const transaction = db.transaction(

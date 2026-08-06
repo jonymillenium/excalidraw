@@ -86,6 +86,7 @@ interface LayerUIProps {
   langCode: Language["code"];
   renderTopLeftUI?: ExcalidrawProps["renderTopLeftUI"];
   renderTopRightUI?: ExcalidrawProps["renderTopRightUI"];
+  renderBottomLeftUI?: ExcalidrawProps["renderBottomLeftUI"];
   renderCustomStats?: ExcalidrawProps["renderCustomStats"];
   UIOptions: AppProps["UIOptions"];
   onExportImage: AppClassProperties["onExportImage"];
@@ -147,6 +148,7 @@ const LayerUI = ({
   showExitZenModeBtn,
   renderTopLeftUI,
   renderTopRightUI,
+  renderBottomLeftUI,
   renderCustomStats,
   UIOptions,
   onExportImage,
@@ -620,6 +622,7 @@ const LayerUI = ({
               renderWelcomeScreen={renderWelcomeScreen}
               defaultUIEnabled={defaultUIEnabled}
               zoomUIEnabled={zoomUIEnabled}
+              renderBottomLeftUI={renderBottomLeftUI}
             />
             {(appState.toast ||
               (scrollBackToContentUIEnabled && appState.scrolledOutside)) && (

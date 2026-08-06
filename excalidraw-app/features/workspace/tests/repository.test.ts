@@ -82,6 +82,24 @@ describe("IndexedDBWorkspaceRepository", () => {
 
     await repository.deleteCanvas(created.project.id, second.id);
     expect(await repository.listCanvases(created.project.id)).toHaveLength(2);
+
+    await repository.deleteCanvas(created.project.id, copy.id);
+    await repository.deleteCanvas(created.project.id, created.canvas.id);
+    expect(await repository.listCanvases(created.project.id)).toEqual([]);
+    expect((await repository.getProject(created.project.id))?.canvasCount).toBe(
+      0,
+    );
+
+    const firstAfterEmpty = await repository.createCanvas(
+      created.project.id,
+      "Primer lienzo nuevo",
+    );
+    expect(await repository.listCanvases(created.project.id)).toEqual([
+      expect.objectContaining({
+        id: firstAfterEmpty.id,
+        name: "Primer lienzo nuevo",
+      }),
+    ]);
     await repository.deleteProject(created.project.id);
     expect(await repository.getProject(created.project.id)).toBeNull();
   });

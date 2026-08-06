@@ -1,14 +1,12 @@
-import { createWriteStream, existsSync, statSync } from "node:fs";
-import { rename, unlink } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import electronUpdater from "electron-updater";
 
 import {
   app,
   BrowserWindow,
-  dialog,
   ipcMain,
   Menu,
   net,
@@ -16,7 +14,14 @@ import {
   shell,
 } from "electron";
 
-import { resolveDesktopUpdateDownload } from "./update-security.mjs";
+const { autoUpdater } = electronUpdater;
+const UPDATE_RELEASES_URL =
+  "https://github.com/jonymillenium/excalidraw/releases";
+const UPDATE_FEED = {
+  provider: "github",
+  owner: "jonymillenium",
+  repo: "excalidraw",
+};
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -54,47 +59,104 @@ const installApplicationProtocol = () =>
     net.fetch(pathToFileURL(resolveApplicationFile(request.url)).toString()),
   );
 
-const installDesktopUpdateHandler = () => {
-  ipcMain.handle("xcalidraw:download-update", async (event, request) => {
-    const senderWindow = BrowserWindow.fromWebContents(event.sender);
-    if (
-      !senderWindow ||
-      !event.sender.getURL().startsWith("xcalidraw://app/")
-    ) {
-      throw new Error("La descarga solo está disponible dentro de Xcalidraw.");
-    }
-    const { downloadUrl, assetName } = resolveDesktopUpdateDownload(request);
-    const selection = await dialog.showSaveDialog(senderWindow, {
-      title: "Guardar actualización de Xcalidraw",
-      defaultPath: path.join(app.getPath("downloads"), assetName),
-      buttonLabel: "Descargar actualización",
-      filters: [{ name: "Instalador de macOS", extensions: ["dmg"] }],
-      properties: ["createDirectory", "showOverwriteConfirmation"],
-    });
-    if (selection.canceled || !selection.filePath) {
-      return { state: "canceled" };
-    }
+const assertTrustedUpdateSender = (event) => {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!senderWindow || !event.sender.getURL().startsWith("xcalidraw://app/")) {
+    throw new Error("La actualización solo está disponible dentro de la app.");
+  }
+};
 
-    const partialPath = `${selection.filePath}.download`;
-    try {
-      const response = await net.fetch(downloadUrl, { redirect: "follow" });
-      if (!response.ok || !response.body) {
-        throw new Error(`GitHub respondió ${response.status}.`);
-      }
-      await pipeline(
-        Readable.fromWeb(response.body),
-        createWriteStream(partialPath),
-      );
-      await rename(partialPath, selection.filePath);
-      const openError = await shell.openPath(selection.filePath);
-      if (openError) {
-        throw new Error(openError);
-      }
-      return { state: "downloaded", filePath: selection.filePath };
-    } catch (error) {
-      await unlink(partialPath).catch(() => undefined);
-      throw error;
+let desktopUpdateStatus = {
+  state: "idle",
+  version: app.getVersion(),
+};
+
+const publishDesktopUpdateStatus = (status) => {
+  desktopUpdateStatus = status;
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("xcalidraw:update-status", status);
+  }
+};
+
+const installDesktopUpdateHandler = () => {
+  autoUpdater.setFeedURL(UPDATE_FEED);
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    publishDesktopUpdateStatus({ state: "checking" });
+  });
+  autoUpdater.on("update-available", (info) => {
+    publishDesktopUpdateStatus({
+      state: "available",
+      version: app.getVersion(),
+      latestVersion: info.version,
+      url: UPDATE_RELEASES_URL,
+    });
+  });
+  autoUpdater.on("update-not-available", () => {
+    publishDesktopUpdateStatus({
+      state: "current",
+      version: app.getVersion(),
+      commit: "",
+    });
+  });
+  autoUpdater.on("download-progress", (progress) => {
+    publishDesktopUpdateStatus({
+      state: "downloading",
+      version: app.getVersion(),
+      latestVersion:
+        "latestVersion" in desktopUpdateStatus
+          ? desktopUpdateStatus.latestVersion
+          : "",
+      progress: Math.round(progress.percent),
+    });
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    publishDesktopUpdateStatus({
+      state: "downloaded",
+      version: app.getVersion(),
+      latestVersion: info.version,
+    });
+  });
+  autoUpdater.on("error", (error) => {
+    publishDesktopUpdateStatus({
+      state: "error",
+      version: app.getVersion(),
+      message: error.message || "No se pudo actualizar la aplicación.",
+    });
+  });
+
+  ipcMain.handle("xcalidraw:check-for-updates", async (event) => {
+    assertTrustedUpdateSender(event);
+    if (!app.isPackaged) {
+      return { state: "development", version: app.getVersion() };
     }
+    await autoUpdater.checkForUpdates();
+    return desktopUpdateStatus;
+  });
+
+  ipcMain.handle("xcalidraw:download-update", async (event) => {
+    assertTrustedUpdateSender(event);
+    if (desktopUpdateStatus.state !== "available") {
+      throw new Error("No hay una actualización lista para descargar.");
+    }
+    await autoUpdater.downloadUpdate();
+    return desktopUpdateStatus;
+  });
+
+  ipcMain.handle("xcalidraw:install-update", async (event) => {
+    assertTrustedUpdateSender(event);
+    if (desktopUpdateStatus.state !== "downloaded") {
+      throw new Error("La actualización todavía no terminó de descargarse.");
+    }
+    const restartingStatus = {
+      state: "restarting",
+      version: app.getVersion(),
+      latestVersion: desktopUpdateStatus.latestVersion,
+    };
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    return restartingStatus;
   });
 };
 
@@ -105,11 +167,8 @@ const createApplicationMenu = () => {
       submenu: [
         { role: "about" },
         {
-          label: "Ver versión publicada en GitHub…",
-          click: () =>
-            shell.openExternal(
-              "https://github.com/jonymillenium/excalidraw/commits/feature/workspaces-projects-views-security",
-            ),
+          label: "Ver versiones publicadas en GitHub…",
+          click: () => shell.openExternal(UPDATE_RELEASES_URL),
         },
         { type: "separator" },
         { role: "hide" },
@@ -160,7 +219,7 @@ const createApplicationMenu = () => {
 
 const createWindow = () => {
   const window = new BrowserWindow({
-    title: "Xcalidraw",
+    title: "Xcalidraw by Kurk",
     width: 1440,
     height: 900,
     minWidth: 900,
@@ -194,7 +253,9 @@ const createWindow = () => {
   return window;
 };
 
-app.setName("Xcalidraw");
+// Keep the original data directory so the product rename never hides profiles.
+app.setPath("userData", path.join(app.getPath("appData"), "Xcalidraw"));
+app.setName("Xcalidraw by Kurk");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {

@@ -32,7 +32,7 @@ describe("application update checker", () => {
 
   it("returns the downloadable arm64 DMG from a newer desktop release", async () => {
     const downloadUrl =
-      "https://github.com/jonymillenium/excalidraw/releases/download/xcalidraw-desktop-v1.3.0/Xcalidraw-1.3.0-arm64.dmg";
+      "https://github.com/jonymillenium/excalidraw/releases/download/xcalidraw-desktop-v1.3.0/Xcalidraw-by-Kurk-1.3.0-arm64.dmg";
     const fetcher = vi.fn(async () =>
       jsonResponse([
         {
@@ -41,7 +41,7 @@ describe("application update checker", () => {
             "https://github.com/jonymillenium/excalidraw/releases/tag/xcalidraw-desktop-v1.3.0",
           assets: [
             {
-              name: "Xcalidraw-1.3.0-arm64.dmg",
+              name: "Xcalidraw-by-Kurk-1.3.0-arm64.dmg",
               browser_download_url: downloadUrl,
               size: 141_000_000,
             },
@@ -62,7 +62,7 @@ describe("application update checker", () => {
       latestVersion: "1.3.0",
       url: "https://github.com/jonymillenium/excalidraw/releases/tag/xcalidraw-desktop-v1.3.0",
       downloadUrl,
-      assetName: "Xcalidraw-1.3.0-arm64.dmg",
+      assetName: "Xcalidraw-by-Kurk-1.3.0-arm64.dmg",
       assetSize: 141_000_000,
     });
     expect(fetcher).toHaveBeenCalledTimes(1);

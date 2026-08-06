@@ -65,21 +65,30 @@ type Route =
   | {
       name: "workspace";
       projectId: string;
-      canvasId: string;
+      canvasId?: string;
       viewId?: string;
     };
 
 const parseRoute = (): Route => {
-  const match = window.location.pathname.match(
+  const canvasMatch = window.location.pathname.match(
     /^\/project\/([^/]+)\/canvas\/([^/]+)\/?$/,
   );
-  return match
+  if (canvasMatch) {
+    return {
+      name: "workspace",
+      projectId: decodeURIComponent(canvasMatch[1]),
+      canvasId: decodeURIComponent(canvasMatch[2]),
+      viewId:
+        new URL(window.location.href).searchParams.get("view") ?? undefined,
+    };
+  }
+  const projectMatch = window.location.pathname.match(
+    /^\/project\/([^/]+)\/?$/,
+  );
+  return projectMatch
     ? {
         name: "workspace",
-        projectId: decodeURIComponent(match[1]),
-        canvasId: decodeURIComponent(match[2]),
-        viewId:
-          new URL(window.location.href).searchParams.get("view") ?? undefined,
+        projectId: decodeURIComponent(projectMatch[1]),
       }
     : { name: "dashboard" };
 };
@@ -149,7 +158,29 @@ const WorkspaceApp = () => {
 
   const checkForUpdates = useCallback(async () => {
     setUpdateStatus({ state: "checking" });
-    setUpdateStatus(await checkForApplicationUpdate());
+    try {
+      setUpdateStatus(
+        window.xcalidrawDesktop
+          ? await window.xcalidrawDesktop.checkForUpdates()
+          : await checkForApplicationUpdate(),
+      );
+    } catch (updateError) {
+      setUpdateStatus({
+        state: "error",
+        version: import.meta.env.VITE_APP_VERSION ?? "dev",
+        message:
+          updateError instanceof Error
+            ? updateError.message
+            : "No se pudo comprobar la actualización.",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!window.xcalidrawDesktop) {
+      return;
+    }
+    return window.xcalidrawDesktop.onUpdateStatus(setUpdateStatus);
   }, []);
 
   const downloadUpdate = useCallback(async () => {
@@ -158,12 +189,15 @@ const WorkspaceApp = () => {
     }
     const availableUpdate = updateStatus;
     if (!window.xcalidrawDesktop) {
+      if (!availableUpdate.downloadUrl) {
+        setUpdateStatus({
+          state: "error",
+          version: availableUpdate.version,
+          message: "La versión publicada no incluye un instalador compatible.",
+        });
+        return;
+      }
       window.open(availableUpdate.downloadUrl, "_blank", "noopener,noreferrer");
-      setUpdateStatus({
-        state: "downloaded",
-        version: availableUpdate.version,
-        latestVersion: availableUpdate.latestVersion,
-      });
       return;
     }
 
@@ -173,19 +207,7 @@ const WorkspaceApp = () => {
       latestVersion: availableUpdate.latestVersion,
     });
     try {
-      const result = await window.xcalidrawDesktop.downloadUpdate({
-        downloadUrl: availableUpdate.downloadUrl,
-        assetName: availableUpdate.assetName,
-      });
-      setUpdateStatus(
-        result.state === "downloaded"
-          ? {
-              state: "downloaded",
-              version: availableUpdate.version,
-              latestVersion: availableUpdate.latestVersion,
-            }
-          : availableUpdate,
-      );
+      setUpdateStatus(await window.xcalidrawDesktop.downloadUpdate());
     } catch (downloadError) {
       setUpdateStatus({
         state: "error",
@@ -194,6 +216,24 @@ const WorkspaceApp = () => {
           downloadError instanceof Error
             ? downloadError.message
             : "No se pudo descargar la actualización.",
+      });
+    }
+  }, [updateStatus]);
+
+  const installUpdate = useCallback(async () => {
+    if (!window.xcalidrawDesktop || updateStatus.state !== "downloaded") {
+      return;
+    }
+    try {
+      setUpdateStatus(await window.xcalidrawDesktop.installUpdate());
+    } catch (installError) {
+      setUpdateStatus({
+        state: "error",
+        version: updateStatus.version,
+        message:
+          installError instanceof Error
+            ? installError.message
+            : "No se pudo reiniciar para instalar la actualización.",
       });
     }
   }, [updateStatus]);
@@ -208,13 +248,15 @@ const WorkspaceApp = () => {
     const path =
       nextRoute.name === "dashboard"
         ? "/"
-        : `/project/${encodeURIComponent(
+        : nextRoute.canvasId
+        ? `/project/${encodeURIComponent(
             nextRoute.projectId,
           )}/canvas/${encodeURIComponent(nextRoute.canvasId)}${
             nextRoute.viewId
               ? `?view=${encodeURIComponent(nextRoute.viewId)}`
               : ""
-          }`;
+          }`
+        : `/project/${encodeURIComponent(nextRoute.projectId)}`;
     window.history[replace ? "replaceState" : "pushState"]({}, "", path);
     setRoute(nextRoute);
   }, []);
@@ -226,6 +268,17 @@ const WorkspaceApp = () => {
         lastCanvasId: canvasId,
       });
       navigate({ name: "workspace", projectId, canvasId, viewId });
+    },
+    [navigate, repository],
+  );
+
+  const navigateToEmptyProject = useCallback(
+    (projectId: string, replace = false) => {
+      void repository.updateSettings({
+        lastProjectId: projectId,
+        lastCanvasId: undefined,
+      });
+      navigate({ name: "workspace", projectId }, replace);
     },
     [navigate, repository],
   );
@@ -374,12 +427,12 @@ const WorkspaceApp = () => {
       }
       const canvases = await repository.listCanvases(project.id);
       if (!canvases[0]) {
-        setError("El proyecto no contiene lienzos válidos.");
+        navigateToEmptyProject(project.id);
         return;
       }
       navigateToCanvas(project.id, canvases[0].id);
     },
-    [navigateToCanvas, repository],
+    [navigateToCanvas, navigateToEmptyProject, repository],
   );
 
   const reorderProject = useCallback(
@@ -696,6 +749,7 @@ const WorkspaceApp = () => {
           onNavigateCanvas={(canvasId) =>
             navigateToCanvas(route.projectId, canvasId)
           }
+          onNavigateEmpty={() => navigateToEmptyProject(route.projectId, true)}
           onNavigateReference={(projectId, canvasId, viewId) =>
             navigateToCanvas(projectId, canvasId, viewId)
           }
@@ -821,6 +875,7 @@ const WorkspaceApp = () => {
           }}
           onCheckForUpdates={() => void checkForUpdates()}
           onDownloadUpdate={() => void downloadUpdate()}
+          onInstallUpdate={() => void installUpdate()}
           onDeleteProfile={() => {
             void (async () => {
               const confirmed = await askConfirm({

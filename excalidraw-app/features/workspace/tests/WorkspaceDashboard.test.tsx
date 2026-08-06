@@ -7,6 +7,7 @@ const renderDashboard = (
   updateStatus: Parameters<typeof WorkspaceDashboard>[0]["updateStatus"],
 ) => {
   const onDownloadUpdate = vi.fn();
+  const onInstallUpdate = vi.fn();
   const onShowProfileChooser = vi.fn();
   render(
     <WorkspaceDashboard
@@ -42,28 +43,29 @@ const renderDashboard = (
       onLockProfile={vi.fn()}
       onCheckForUpdates={vi.fn()}
       onDownloadUpdate={onDownloadUpdate}
+      onInstallUpdate={onInstallUpdate}
       onProjectAction={vi.fn()}
     />,
   );
-  return { onDownloadUpdate, onShowProfileChooser };
+  return { onDownloadUpdate, onInstallUpdate, onShowProfileChooser };
 };
 
 describe("WorkspaceDashboard updates", () => {
-  it("offers the real DMG download when a release is available", () => {
+  it("offers the in-app download when a release is available", () => {
     const { onDownloadUpdate } = renderDashboard({
       state: "available",
       version: "1.2.2",
       latestVersion: "1.3.0",
       url: "https://github.com/jonymillenium/excalidraw/releases/tag/xcalidraw-desktop-v1.3.0",
       downloadUrl:
-        "https://github.com/jonymillenium/excalidraw/releases/download/xcalidraw-desktop-v1.3.0/Xcalidraw-1.3.0-arm64.dmg",
-      assetName: "Xcalidraw-1.3.0-arm64.dmg",
+        "https://github.com/jonymillenium/excalidraw/releases/download/xcalidraw-desktop-v1.3.0/Xcalidraw-by-Kurk-1.3.0-arm64.dmg",
+      assetName: "Xcalidraw-by-Kurk-1.3.0-arm64.dmg",
       assetSize: 141_000_000,
     });
 
     expect(screen.getByText("Nueva versión · 1.3.0")).toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole("button", { name: "Descargar actualización" }),
+      screen.getByRole("button", { name: "Descargar e instalar" }),
     );
     expect(onDownloadUpdate).toHaveBeenCalledTimes(1);
   });
@@ -80,8 +82,21 @@ describe("WorkspaceDashboard updates", () => {
 
     expect(screen.getByText("Versión en preparación")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Descargar actualización" }),
+      screen.queryByRole("button", { name: "Descargar e instalar" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("restarts to install a downloaded update", () => {
+    const { onInstallUpdate } = renderDashboard({
+      state: "downloaded",
+      version: "1.3.4",
+      latestVersion: "1.4.0",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reiniciar y actualizar" }),
+    );
+    expect(onInstallUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("returns to the profile chooser explicitly", () => {

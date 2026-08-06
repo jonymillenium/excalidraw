@@ -43,12 +43,18 @@ export type ApplicationUpdateStatus =
       version: string;
       latestVersion: string;
       url: string;
-      downloadUrl: string;
-      assetName: string;
-      assetSize: number | null;
+      downloadUrl?: string;
+      assetName?: string;
+      assetSize?: number | null;
     }
-  | { state: "downloading"; version: string; latestVersion: string }
+  | {
+      state: "downloading";
+      version: string;
+      latestVersion: string;
+      progress?: number;
+    }
   | { state: "downloaded"; version: string; latestVersion: string }
+  | { state: "restarting"; version: string; latestVersion: string }
   | { state: "error"; version: string; message: string };
 
 type UpdateCheckerOptions = {
@@ -131,7 +137,7 @@ const findNewerDesktopRelease = async ({
     if (compareVersions(latestVersion, version) <= 0) {
       continue;
     }
-    const assetName = `Xcalidraw-${latestVersion}-arm64.dmg`;
+    const assetName = `Xcalidraw-by-Kurk-${latestVersion}-arm64.dmg`;
     const asset = release.assets?.find(
       (candidate) =>
         candidate.name === assetName && candidate.browser_download_url,

@@ -44,6 +44,7 @@ export const WorkspaceDashboard = ({
   onLockProfile,
   onCheckForUpdates,
   onDownloadUpdate,
+  onInstallUpdate,
   onProjectAction,
 }: {
   projects: ProjectSummary[];
@@ -66,6 +67,7 @@ export const WorkspaceDashboard = ({
   onLockProfile: () => void;
   onCheckForUpdates: () => void;
   onDownloadUpdate: () => void;
+  onInstallUpdate: () => void;
   onProjectAction: (project: ProjectSummary, action: ProjectAction) => void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,11 +98,18 @@ export const WorkspaceDashboard = ({
           </div>
         </div>
         <div className="workspace-dashboard__header-actions">
-          {updateStatus.state === "available" ? (
+          {updateStatus.state === "downloaded" ? (
+            <div className="workspace-update workspace-update--available">
+              <span>Actualización lista · {updateStatus.latestVersion}</span>
+              <button type="button" onClick={onInstallUpdate}>
+                Reiniciar y actualizar
+              </button>
+            </div>
+          ) : updateStatus.state === "available" ? (
             <div className="workspace-update workspace-update--available">
               <span>Nueva versión · {updateStatus.latestVersion}</span>
               <button type="button" onClick={onDownloadUpdate}>
-                Descargar actualización
+                Descargar e instalar
               </button>
               <a href={updateStatus.url} target="_blank" rel="noreferrer">
                 Ver detalles
@@ -131,12 +140,10 @@ export const WorkspaceDashboard = ({
               disabled={
                 updateStatus.state === "checking" ||
                 updateStatus.state === "downloading" ||
-                updateStatus.state === "downloaded"
+                updateStatus.state === "restarting"
               }
               title={
-                updateStatus.state === "downloaded"
-                  ? "El DMG está abierto. Cierra Xcalidraw antes de reemplazar la aplicación y vuelve a iniciarla."
-                  : updateStatus.state === "error"
+                updateStatus.state === "error"
                   ? updateStatus.message
                   : "Consultar la versión publicada en GitHub"
               }
@@ -156,9 +163,13 @@ export const WorkspaceDashboard = ({
                   : updateStatus.state === "current"
                   ? "Al día"
                   : updateStatus.state === "downloading"
-                  ? "Descargando…"
-                  : updateStatus.state === "downloaded"
-                  ? "Cierra e instala"
+                  ? `Descargando${
+                      updateStatus.progress === undefined
+                        ? "…"
+                        : ` · ${updateStatus.progress}%`
+                    }`
+                  : updateStatus.state === "restarting"
+                  ? "Reiniciando…"
                   : updateStatus.state === "error"
                   ? "Reintentar"
                   : "Desarrollo"}

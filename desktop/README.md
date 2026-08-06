@@ -1,4 +1,4 @@
-# Xcalidraw para macOS
+# Xcalidraw by Kurk para macOS
 
 La aplicación de escritorio usa Electron como contenedor nativo seguro y conserva el mismo almacenamiento IndexedDB local-first. Cada perfil queda aislado dentro del directorio de datos de la aplicación.
 
@@ -11,15 +11,19 @@ npm install --prefix desktop
 npm run --prefix desktop dist
 ```
 
-El comando `dist` exige un árbol de trabajo ya guardado en Git, compila la interfaz, incrusta ese commit y luego genera el DMG. Esto evita que una aplicación se identifique como una revisión distinta de su contenido real. El empaquetador usa temporalmente una ruta segura de macOS —también funciona si el directorio del repositorio contiene espacios o `|`— y deja el instalador versionado en `desktop/dist`. Es una compilación arm64 para Apple Silicon. Al no incluir una identidad Apple Developer ID, macOS puede pedir clic derecho → Abrir en el primer inicio.
+El comando `dist` exige un árbol de trabajo ya guardado en Git, compila la interfaz, incrusta ese commit y luego genera el DMG y el ZIP de actualización. Esto evita que una aplicación se identifique como una revisión distinta de su contenido real. El empaquetador usa temporalmente una ruta segura de macOS —también funciona si el directorio del repositorio contiene espacios o `|`— y deja los artefactos versionados en `desktop/dist`. Es una compilación arm64 para Apple Silicon. Los Releases públicos deben firmarse y notarizarse con Apple Developer ID.
 
 ## Versiones y actualizaciones
 
-La aplicación no consulta GitHub en segundo plano. Solo cuando se pulsa **Comprobar actualizaciones** consulta los Releases de escritorio y la rama `feature/workspaces-projects-views-security` del repositorio `jonymillenium/excalidraw`.
+La aplicación consulta GitHub al abrirse y también desde **Comprobar actualizaciones**. Si existe un Release firmado más nuevo, puede descargarlo en segundo plano y mostrar **Reiniciar y actualizar**: Electron reemplaza la aplicación y vuelve a abrirla sin pedir otro DMG. Los perfiles y proyectos permanecen en el directorio histórico de Application Support.
 
-Si existe un Release más nuevo con su DMG arm64, el dashboard permite descargarlo dentro de la aplicación y abre el instalador al terminar. Si hay commits nuevos pero el instalador todavía no fue publicado, muestra **Versión en preparación** sin ofrecer una descarga inexistente. Para completar la actualización, cierra Xcalidraw, arrastra la copia nueva sobre la anterior y vuelve a abrirla; los perfiles y proyectos se conservan en Application Support.
+El workflow **Release Xcalidraw by Kurk** compila cada versión, genera DMG + ZIP + metadatos diferenciales, firma y notariza el binario, y publica un Release con la etiqueta `xcalidraw-desktop-v<versión>`. Una versión no puede publicarse dos veces.
 
-El workflow manual **Release Xcalidraw Desktop** compila el commit elegido, verifica el DMG y publica un Release con la etiqueta `xcalidraw-desktop-v<versión>`. Una versión no puede publicarse dos veces.
+Para que macOS acepte la actualización automática, el repositorio debe tener estos secretos de GitHub Actions: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` y `APPLE_TEAM_ID`. La primera instalación firmada se realiza con el DMG; a partir de esa versión, las siguientes se aplican dentro de la app.
+
+## Recursos públicos
+
+La isla flotante incluye **Iconos y fotos**. Iconify funciona sin clave y reúne colecciones abiertas. La búsqueda traduce términos frecuentes entre castellano e inglés. Para Unsplash, pega una **Access Key** gratuita en el panel de fotos (nunca la Secret Key); queda guardada solo en esa Mac y los resultados conservan la atribución requerida.
 
 Para mover el contenido a otra Mac, usa **Exportar todo** en el dashboard, instala la aplicación en la otra computadora y selecciona **Restaurar backup**.
 
@@ -29,7 +33,7 @@ Los lienzos nuevos y los existentes migrados una sola vez activan el ajuste magn
 
 ## Organización y referencias
 
-Las vistas admiten nombre, descripción, orden manual, carpetas y subcarpetas. Sus altas, movimientos, renombrados y confirmaciones usan modales propios en lugar de alertas del sistema; la biblioteca aplica el mismo criterio. La librería exige nombrar cada asset, incorpora búsqueda y conserva rutas de carpetas exportables. Cada lienzo sin cifrar genera su propia miniatura ajustada al contenido completo. Desde **Enlazar** se puede insertar en el canvas una tarjeta nativa que referencia otro lienzo, proyecto o una vista guardada: el modal recorta la miniatura al sector de esa vista y, al abrirla, restaura exactamente su encuadre y zoom. Al seleccionar una de estas tarjetas y pulsar la barra espaciadora se abre su vista previa tipo Quick Look para recorrer el proyecto o navegar al lienzo o vista exactos.
+Las vistas admiten nombre, descripción, orden manual, carpetas y subcarpetas. Sus altas, movimientos, renombrados y confirmaciones usan modales propios en lugar de alertas del sistema; la biblioteca aplica el mismo criterio. La librería exige nombrar cada asset, incorpora búsqueda y conserva rutas de carpetas exportables. Cada lienzo sin cifrar genera su propia miniatura ajustada al contenido completo. Desde el icono universal de biblioteca en la isla flotante se puede insertar en el canvas una tarjeta nativa que referencia otro lienzo, proyecto o una vista guardada: el modal recorta la miniatura al sector de esa vista y, al abrirla, restaura exactamente su encuadre y zoom. Al seleccionar una de estas tarjetas y pulsar la barra espaciadora se abre su vista previa tipo Quick Look para recorrer el proyecto o navegar al lienzo o vista exactos.
 
 Los seis perfiles de color de cada lienzo guardan fondo, color de elementos y contraste. Los trazos libres pueden terminar como elementos individuales o como un único sketch agrupado, y el candado de una selección bloquea el elemento de forma efectiva.
 
