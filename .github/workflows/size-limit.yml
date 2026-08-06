@@ -23,5 +23,5 @@ jobs:
         env:
           CI: true
       - name: Build and check bundle budgets
-        run: yarn build:esm && npx size-limit
+        run: yarn build:esm && node ../../scripts/checkExcalidrawBundleSize.mjs
         working-directory: packages/excalidraw
