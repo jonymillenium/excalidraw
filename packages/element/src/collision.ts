@@ -259,7 +259,7 @@ export const hitElementBoundText = (
   const boundTextElement = isLinearElement(element)
     ? {
         ...boundTextElementCandidate,
-        // arrow's bound text accurate position is not stored in the element's property
+        // A connector's bound text accurate position is not stored in the element's property
         // but rather calculated and returned from the following static method
         ...LinearElementEditor.getBoundTextElementPosition(
           element,

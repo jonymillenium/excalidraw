@@ -6643,7 +6643,7 @@ class App extends React.Component<AppProps, AppState> {
         this.scene.getNonDeletedElementsMap(),
       );
       if (
-        isArrowElement(elements[index]) &&
+        isLinearElement(elements[index]) &&
         hitElementItself({
           point: pointFrom(x, y),
           element: elements[index],
@@ -6769,7 +6769,7 @@ class App extends React.Component<AppProps, AppState> {
       !existingTextElement &&
       shouldBindToContainer &&
       container &&
-      !isArrowElement(container)
+      !isLinearElement(container)
     ) {
       const fontString = {
         fontSize,
@@ -6864,7 +6864,7 @@ class App extends React.Component<AppProps, AppState> {
         groupIds: container?.groupIds ?? [],
         lineHeight,
         angle: container
-          ? isArrowElement(container)
+          ? isLinearElement(container)
             ? (0 as Radians)
             : container.angle
           : (0 as Radians),
@@ -7070,7 +7070,8 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (
-        ((event[KEYS.CTRL_OR_CMD] && isSimpleArrow(selectedLinearElement)) ||
+        event[KEYS.CTRL_OR_CMD] &&
+        (isSimpleArrow(selectedLinearElement) ||
           isLineElement(selectedLinearElement)) &&
         (!this.state.selectedLinearElement?.isEditing ||
           this.state.selectedLinearElement.elementId !==

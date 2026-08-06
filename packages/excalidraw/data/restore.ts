@@ -772,7 +772,7 @@ const repairBoundElement = (
     : null;
 
   (boundElement as Mutable<typeof boundElement>).angle = (
-    isArrowElement(container) ? 0 : container?.angle ?? 0
+    isLinearElement(container) ? 0 : container?.angle ?? 0
   ) as Radians;
 
   if (!container) {
