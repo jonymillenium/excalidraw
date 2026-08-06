@@ -47,21 +47,8 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Enable the repository package manager
-        if: steps.published.outputs.exists != 'true'
-        run: |
-          corepack enable
-          corepack prepare yarn@1.22.22 --activate
-
-      - name: Install web dependencies
-        if: steps.published.outputs.exists != 'true'
-        run: yarn install --frozen-lockfile
-
-      - name: Install desktop dependencies
-        if: steps.published.outputs.exists != 'true'
-        run: npm ci --prefix desktop
-
-      - name: Verify Apple signing configuration
+      - name: Detect Apple signing configuration
+        id: signing
         if: steps.published.outputs.exists != 'true'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -72,13 +59,29 @@ jobs:
         run: |
           for required_name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!required_name}" ]; then
-              echo "Missing required GitHub Actions secret: ${required_name}" >&2
-              exit 1
+              echo "configured=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::Desktop release skipped. Missing GitHub Actions secret: ${required_name}"
+              exit 0
             fi
           done
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Enable the repository package manager
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install web dependencies
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        run: npm ci --prefix desktop
 
       - name: Build the versioned desktop artifact
-        if: steps.published.outputs.exists != 'true'
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -88,7 +91,7 @@ jobs:
         run: npm run --prefix desktop dist
 
       - name: Verify the disk image
-        if: steps.published.outputs.exists != 'true'
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
         env:
           XCALIDRAW_DESKTOP_VERSION: ${{ steps.desktop.outputs.version }}
         run: |
@@ -98,7 +101,7 @@ jobs:
           test -f "desktop/dist/latest-mac.yml"
 
       - name: Publish the GitHub Release
-        if: steps.published.outputs.exists != 'true'
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           XCALIDRAW_DESKTOP_TAG: ${{ steps.desktop.outputs.tag }}
