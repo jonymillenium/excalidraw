@@ -41,8 +41,8 @@ import { normalizeText } from "@excalidraw/element";
 import { wrapText } from "@excalidraw/element";
 import { getWrappedTextLines } from "@excalidraw/element";
 import {
-  isArrowElement,
   isBoundToContainer,
+  isLinearElement,
   isTextElement,
 } from "@excalidraw/element";
 
@@ -287,7 +287,7 @@ export const textWysiwyg = ({
       let maxHeight = updatedTextElement.height;
 
       if (container && updatedTextElement.containerId) {
-        if (isArrowElement(container)) {
+        if (isLinearElement(container)) {
           const boundTextCoords =
             LinearElementEditor.getBoundTextElementPosition(
               container,
@@ -325,7 +325,7 @@ export const textWysiwyg = ({
         );
 
         // autogrow container height if text exceeds
-        if (!isArrowElement(container) && height > maxHeight) {
+        if (!isLinearElement(container) && height > maxHeight) {
           const targetContainerHeight = computeContainerDimensionForBoundText(
             height,
             container.type,
@@ -337,7 +337,7 @@ export const textWysiwyg = ({
         } else if (
           // autoshrink container height until original container height
           // is reached when text is removed
-          !isArrowElement(container) &&
+          !isLinearElement(container) &&
           container.height > originalContainerData.height &&
           height < maxHeight
         ) {
@@ -815,8 +815,8 @@ export const textWysiwyg = ({
               id: element.id,
             }),
           });
-        } else if (isArrowElement(container)) {
-          // updating an arrow label may change bounds, prevent stale cache:
+        } else if (isLinearElement(container)) {
+          // Updating a connector label may change bounds, prevent stale cache:
           bumpVersion(container);
         }
       } else {

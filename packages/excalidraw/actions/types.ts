@@ -156,6 +156,7 @@ export type PanelComponentProps = {
     name: ActionName,
     data?: PanelComponentProps["data"],
   ) => React.JSX.Element | null;
+  executeAction: (name: ActionName) => void;
 };
 
 export interface Action<TData = any> {

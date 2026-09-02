@@ -1,4 +1,8 @@
-import { COLOR_WHITE, THEME, applyDarkModeFilter } from "@excalidraw/common";
+import {
+  COLOR_WHITE,
+  THEME,
+  applyCanvasBackgroundColorFilter,
+} from "@excalidraw/common";
 
 import type { StaticCanvasRenderConfig } from "../scene/types";
 import type { AppState, StaticCanvasAppState } from "../types";
@@ -37,6 +41,7 @@ export const bootstrapCanvas = ({
   theme,
   isExporting,
   viewBackgroundColor,
+  viewBackgroundColorMode = "theme",
 }: {
   canvas: HTMLCanvasElement;
   scale: number;
@@ -45,6 +50,7 @@ export const bootstrapCanvas = ({
   theme?: AppState["theme"];
   isExporting?: StaticCanvasRenderConfig["isExporting"];
   viewBackgroundColor?: StaticCanvasAppState["viewBackgroundColor"];
+  viewBackgroundColorMode?: StaticCanvasAppState["viewBackgroundColorMode"];
 }): CanvasRenderingContext2D => {
   const context = canvas.getContext("2d")!;
 
@@ -71,9 +77,10 @@ export const bootstrapCanvas = ({
       // stale color from a previous draw. Seed a sane default so corrupted
       // values fall back to white instead of painting garbage.
       context.fillStyle = COLOR_WHITE;
-      context.fillStyle = applyDarkModeFilter(
+      context.fillStyle = applyCanvasBackgroundColorFilter(
         viewBackgroundColor,
         theme === THEME.DARK,
+        viewBackgroundColorMode,
       );
       context.fillRect(0, 0, normalizedWidth, normalizedHeight);
       context.restore();

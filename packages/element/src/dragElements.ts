@@ -25,6 +25,7 @@ import {
   isElbowArrow,
   isFrameLikeElement,
   isImageElement,
+  isLinearElement,
   isTextElement,
 } from "./typeChecks";
 
@@ -123,12 +124,12 @@ export const dragSelectedElements = (
     if (!isArrowElement(element)) {
       updateElementCoords(pointerDownState, element, scene, adjustedOffset);
 
-      // skip arrow labels since we calculate its position during render
+      // Skip connector labels since we calculate their position during render.
       const textElement = getBoundTextElement(
         element,
         scene.getNonDeletedElementsMap(),
       );
-      if (textElement) {
+      if (textElement && !isLinearElement(element)) {
         updateElementCoords(
           pointerDownState,
           textElement,

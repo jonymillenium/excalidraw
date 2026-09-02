@@ -113,6 +113,17 @@ export const applyDarkModeFilter = (color: string, enable = true): string => {
   return result;
 };
 
+/**
+ * Theme mode retains Excalidraw's original dark-theme color mapping. Exact
+ * mode is used by Xcalidraw canvas profiles, where the selected color must be
+ * the color painted on screen.
+ */
+export const applyCanvasBackgroundColorFilter = (
+  color: string,
+  enable = true,
+  mode: "theme" | "exact" = "theme",
+): string => (mode === "exact" ? color : applyDarkModeFilter(color, enable));
+
 // ---------------------------------------------------------------------------
 // Color palette
 // ---------------------------------------------------------------------------

@@ -1,9 +1,4 @@
-import {
-  DEFAULT_GRID_SIZE,
-  KEYS,
-  MOBILE_ACTION_BUTTON_BG,
-  arrayToMap,
-} from "@excalidraw/common";
+import { KEYS, MOBILE_ACTION_BUTTON_BG, arrayToMap } from "@excalidraw/common";
 
 import { getNonDeletedElements } from "@excalidraw/element";
 
@@ -75,8 +70,11 @@ export const actionDuplicateSelection = register({
         const duplicateFrameId =
           origElement.frameId && origIdToDuplicateId.get(origElement.frameId);
         return {
-          x: origElement.x + DEFAULT_GRID_SIZE / 2,
-          y: origElement.y + DEFAULT_GRID_SIZE / 2,
+          // Match precision editors: Cmd/Ctrl+D creates a perfectly aligned
+          // copy in place. The selected duplicate can then be moved with
+          // smart guides without first correcting a diagonal offset.
+          x: origElement.x,
+          y: origElement.y,
           frameId: duplicateFrameId ?? origElement.frameId,
         };
       },

@@ -308,6 +308,17 @@ export const MobileToolbar = ({ app, setAppState }: MobileToolbarProps) => {
           >
             {t("toolBar.laser")}
           </DropdownMenu.Item>
+          {app.props.toolbarActions?.map((action) => (
+            <DropdownMenu.Item
+              key={action.id}
+              onSelect={action.onSelect}
+              icon={action.icon}
+              data-testid={`toolbar-host-action-${action.id}`}
+              disabled={action.disabled}
+            >
+              {action.label}
+            </DropdownMenu.Item>
+          ))}
           <div style={{ margin: "6px 0", fontSize: 14, fontWeight: 600 }}>
             Generate
           </div>

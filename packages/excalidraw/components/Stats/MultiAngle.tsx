@@ -1,7 +1,7 @@
 import { degreesToRadians, radiansToDegrees } from "@excalidraw/math";
 
 import { getBoundTextElement } from "@excalidraw/element";
-import { isArrowElement } from "@excalidraw/element";
+import { isLinearElement } from "@excalidraw/element";
 
 import { isInGroup } from "@excalidraw/element";
 
@@ -58,7 +58,7 @@ const handleDegreeChange: DragInputCallbackType<
       });
 
       const boundTextElement = getBoundTextElement(element, elementsMap);
-      if (boundTextElement && !isArrowElement(element)) {
+      if (boundTextElement && !isLinearElement(element)) {
         scene.mutateElement(boundTextElement, { angle: nextAngle });
       }
     }
@@ -92,7 +92,7 @@ const handleDegreeChange: DragInputCallbackType<
     });
 
     const boundTextElement = getBoundTextElement(latestElement, elementsMap);
-    if (boundTextElement && !isArrowElement(latestElement)) {
+    if (boundTextElement && !isLinearElement(latestElement)) {
       scene.mutateElement(boundTextElement, { angle: nextAngle });
     }
   }

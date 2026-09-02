@@ -2,13 +2,20 @@ import { pointFrom, type GlobalPoint, type LocalPoint } from "@excalidraw/math";
 
 import { THEME } from "@excalidraw/common";
 
-import type { PointSnapLine, PointerSnapLine } from "../snapping";
+import type {
+  DistanceSnapLine,
+  PointSnapLine,
+  PointerSnapLine,
+} from "../snapping";
 import type { InteractiveCanvasAppState } from "../types";
 
-const SNAP_COLOR_LIGHT = "#ff6b6b";
-const SNAP_COLOR_DARK = "#ff0000";
-const SNAP_WIDTH = 1;
-const SNAP_CROSS_SIZE = 2;
+const SNAP_COLOR_LIGHT = "#ff2d78";
+const SNAP_COLOR_DARK = "#ff174d";
+const SNAP_HALO_LIGHT = "rgba(255, 255, 255, 0.96)";
+const SNAP_HALO_DARK = "rgba(0, 0, 0, 0.92)";
+const SNAP_WIDTH = 1.5;
+const SNAP_CROSS_SIZE = 3;
+const SNAP_LINE_EXTENSION = 6;
 
 export const renderSnaps = (
   context: CanvasRenderingContext2D,
@@ -25,6 +32,10 @@ export const renderSnaps = (
     appState.theme === THEME.LIGHT || appState.zenModeEnabled
       ? SNAP_COLOR_LIGHT
       : SNAP_COLOR_DARK;
+  const snapHaloColor =
+    appState.theme === THEME.LIGHT || appState.zenModeEnabled
+      ? SNAP_HALO_LIGHT
+      : SNAP_HALO_DARK;
   // in zen mode make the cross more visible since we don't draw the lines
   const snapWidth =
     (appState.zenModeEnabled ? SNAP_WIDTH * 1.5 : SNAP_WIDTH) /
@@ -32,6 +43,12 @@ export const renderSnaps = (
 
   context.save();
   context.translate(appState.scrollX, appState.scrollY);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.globalAlpha = 0.98;
+  context.shadowColor = snapHaloColor;
+  context.shadowBlur = 2 / appState.zoom.value;
+  context.fillStyle = snapColor;
 
   for (const snapLine of appState.snapLines) {
     if (snapLine.type === "pointer") {
@@ -39,6 +56,11 @@ export const renderSnaps = (
       context.strokeStyle = snapColor;
 
       drawPointerSnapLine(snapLine, context, appState);
+    } else if (snapLine.type === "distance") {
+      context.lineWidth = snapWidth;
+      context.strokeStyle = snapColor;
+
+      drawDistanceLine(snapLine, context, appState, snapColor, snapHaloColor);
     } else if (snapLine.type === "gap") {
       context.lineWidth = snapWidth;
       context.strokeStyle = snapColor;
@@ -49,6 +71,8 @@ export const renderSnaps = (
         snapLine.direction,
         appState,
         context,
+        snapColor,
+        snapHaloColor,
       );
     } else if (snapLine.type === "points") {
       context.lineWidth = snapWidth;
@@ -68,8 +92,18 @@ const drawPointsSnapLine = (
   if (!appState.zenModeEnabled) {
     const firstPoint = pointSnapLine.points[0];
     const lastPoint = pointSnapLine.points[pointSnapLine.points.length - 1];
+    const extension = SNAP_LINE_EXTENSION / appState.zoom.value;
 
-    drawLine(firstPoint, lastPoint, context);
+    const lineStart =
+      firstPoint[0] === lastPoint[0]
+        ? pointFrom(firstPoint[0], firstPoint[1] - extension)
+        : pointFrom(firstPoint[0] - extension, firstPoint[1]);
+    const lineEnd =
+      firstPoint[0] === lastPoint[0]
+        ? pointFrom(lastPoint[0], lastPoint[1] + extension)
+        : pointFrom(lastPoint[0] + extension, lastPoint[1]);
+
+    drawLine(lineStart, lineEnd, context);
   }
 
   for (const point of pointSnapLine.points) {
@@ -106,6 +140,9 @@ const drawCross = <Point extends LocalPoint | GlobalPoint>(
   context.lineTo(x - size, y + size);
 
   context.stroke();
+  context.beginPath();
+  context.arc(x, y, size * 0.45, 0, Math.PI * 2);
+  context.fill();
   context.restore();
 };
 
@@ -126,6 +163,8 @@ const drawGapLine = <Point extends LocalPoint | GlobalPoint>(
   direction: "horizontal" | "vertical",
   appState: InteractiveCanvasAppState,
   context: CanvasRenderingContext2D,
+  snapColor: string,
+  snapHaloColor: string,
 ) => {
   // a horizontal gap snap line
   // |–––––––||–––––––|
@@ -206,4 +245,146 @@ const drawGapLine = <Point extends LocalPoint | GlobalPoint>(
       drawLine(from, to, context);
     }
   }
+
+  if (!appState.zenModeEnabled) {
+    drawDistanceLabel(
+      from,
+      to,
+      direction,
+      direction === "horizontal"
+        ? Math.abs(to[0] - from[0])
+        : Math.abs(to[1] - from[1]),
+      appState,
+      context,
+      snapColor,
+      snapHaloColor,
+    );
+  }
+};
+
+const drawDistanceLine = (
+  distanceSnapLine: DistanceSnapLine,
+  context: CanvasRenderingContext2D,
+  appState: InteractiveCanvasAppState,
+  snapColor: string,
+  snapHaloColor: string,
+) => {
+  if (appState.zenModeEnabled) {
+    return;
+  }
+
+  const { points, direction, distance } = distanceSnapLine;
+  const [from, to] = points;
+  const tickSize = 5 / appState.zoom.value;
+
+  context.save();
+  context.setLineDash([3 / appState.zoom.value, 3 / appState.zoom.value]);
+  drawLine(from, to, context);
+  context.setLineDash([]);
+
+  if (direction === "horizontal") {
+    drawLine(
+      pointFrom(from[0], from[1] - tickSize),
+      pointFrom(from[0], from[1] + tickSize),
+      context,
+    );
+    drawLine(
+      pointFrom(to[0], to[1] - tickSize),
+      pointFrom(to[0], to[1] + tickSize),
+      context,
+    );
+  } else {
+    drawLine(
+      pointFrom(from[0] - tickSize, from[1]),
+      pointFrom(from[0] + tickSize, from[1]),
+      context,
+    );
+    drawLine(
+      pointFrom(to[0] - tickSize, to[1]),
+      pointFrom(to[0] + tickSize, to[1]),
+      context,
+    );
+  }
+
+  drawDistanceLabel(
+    from,
+    to,
+    direction,
+    distance,
+    appState,
+    context,
+    snapColor,
+    snapHaloColor,
+  );
+  context.restore();
+};
+
+const drawDistanceLabel = <Point extends LocalPoint | GlobalPoint>(
+  from: Point,
+  to: Point,
+  direction: "horizontal" | "vertical",
+  distance: number,
+  appState: InteractiveCanvasAppState,
+  context: CanvasRenderingContext2D,
+  snapColor: string,
+  snapHaloColor: string,
+) => {
+  const zoom = appState.zoom.value;
+  const roundedDistance = Math.round(distance * 10) / 10;
+  const label = `${
+    Number.isInteger(roundedDistance)
+      ? roundedDistance
+      : roundedDistance.toFixed(1)
+  } px`;
+
+  context.save();
+  context.shadowBlur = 0;
+  context.font = `650 ${
+    11 / zoom
+  }px -apple-system, BlinkMacSystemFont, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  const textWidth = context.measureText(label).width;
+  const paddingX = 5 / zoom;
+  const labelWidth = textWidth + paddingX * 2;
+  const labelHeight = 18 / zoom;
+  const radius = 5 / zoom;
+  const screenDistance = distance * zoom;
+  let x = (from[0] + to[0]) / 2;
+  let y = (from[1] + to[1]) / 2;
+
+  if (direction === "horizontal" && screenDistance < labelWidth * zoom + 8) {
+    y -= 13 / zoom;
+  } else if (
+    direction === "vertical" &&
+    screenDistance < labelHeight * zoom + 8
+  ) {
+    x += labelWidth / 2 + 8 / zoom;
+  }
+
+  context.beginPath();
+  if (context.roundRect) {
+    context.roundRect(
+      x - labelWidth / 2,
+      y - labelHeight / 2,
+      labelWidth,
+      labelHeight,
+      radius,
+    );
+  } else {
+    context.rect(
+      x - labelWidth / 2,
+      y - labelHeight / 2,
+      labelWidth,
+      labelHeight,
+    );
+  }
+  context.fillStyle = snapColor;
+  context.fill();
+  context.lineWidth = 1 / zoom;
+  context.strokeStyle = snapHaloColor;
+  context.stroke();
+  context.fillStyle = "#ffffff";
+  context.fillText(label, x, y);
+  context.restore();
 };

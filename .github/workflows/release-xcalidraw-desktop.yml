@@ -1,0 +1,118 @@
+name: Release Xcalidraw by Kurk
+
+on:
+  push:
+    branches:
+      - feature/workspaces-projects-views-security
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: xcalidraw-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign and publish macOS update
+    runs-on: macos-14
+    steps:
+      - name: Checkout the release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Read desktop release metadata
+        id: desktop
+        run: |
+          xcalidraw_desktop_version="$(node -p "require('./desktop/package.json').version")"
+          echo "version=${xcalidraw_desktop_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=xcalidraw-desktop-v${xcalidraw_desktop_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the version is already published
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XCALIDRAW_DESKTOP_TAG: ${{ steps.desktop.outputs.tag }}
+        run: |
+          if gh release view "$XCALIDRAW_DESKTOP_TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect Apple signing configuration
+        id: signing
+        if: steps.published.outputs.exists != 'true'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for required_name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!required_name}" ]; then
+              echo "configured=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::Desktop release skipped. Missing GitHub Actions secret: ${required_name}"
+              exit 0
+            fi
+          done
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Enable the repository package manager
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install web dependencies
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        run: yarn install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        run: npm ci --prefix desktop
+
+      - name: Build the versioned desktop artifact
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run --prefix desktop dist
+
+      - name: Verify the disk image
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        env:
+          XCALIDRAW_DESKTOP_VERSION: ${{ steps.desktop.outputs.version }}
+        run: |
+          hdiutil verify "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg"
+          shasum -a 256 "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg"
+          test -f "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.zip"
+          test -f "desktop/dist/latest-mac.yml"
+
+      - name: Publish the GitHub Release
+        if: steps.published.outputs.exists != 'true' && steps.signing.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XCALIDRAW_DESKTOP_TAG: ${{ steps.desktop.outputs.tag }}
+          XCALIDRAW_DESKTOP_VERSION: ${{ steps.desktop.outputs.version }}
+        run: |
+          gh release create "$XCALIDRAW_DESKTOP_TAG" \
+            "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg" \
+            "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.dmg.blockmap" \
+            "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.zip" \
+            "desktop/dist/Xcalidraw-by-Kurk-${XCALIDRAW_DESKTOP_VERSION}-arm64.zip.blockmap" \
+            "desktop/dist/latest-mac.yml" \
+            --target "$GITHUB_SHA" \
+            --title "Xcalidraw by Kurk ${XCALIDRAW_DESKTOP_VERSION}" \
+            --generate-notes

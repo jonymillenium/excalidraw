@@ -72,7 +72,6 @@ export const FONT_METADATA: Record<number, FontMetadata> = {
       descender: -374,
       lineHeight: 1.25,
     },
-    deprecated: true,
   },
   [FONT_FAMILY.Helvetica]: {
     metrics: {

@@ -1,6 +1,38 @@
 @use "../css/variables.module" as *;
 
 .excalidraw {
+  .library-unit-wrapper {
+    display: grid;
+    width: 55px;
+    min-width: 0;
+    gap: 0.2rem;
+  }
+
+  .library-unit__name {
+    overflow: hidden;
+    color: var(--text-primary-color);
+    font-size: 0.64rem;
+    font-weight: 600;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .library-unit__rename {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: text;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--color-primary);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+  }
+
   .library-unit {
     align-items: center;
     border: 1px solid transparent;

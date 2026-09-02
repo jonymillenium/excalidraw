@@ -39,6 +39,7 @@ import Footer from "./footer/Footer";
 import { isSidebarDockedAtom } from "./Sidebar/Sidebar";
 import MainMenu from "./main-menu/MainMenu";
 import { ActiveConfirmDialog } from "./ActiveConfirmDialog";
+import { AddToLibraryDialog } from "./AddToLibraryDialog";
 import { useEditorInterface, useStylesPanelMode } from "./App";
 import { OverwriteConfirmDialog } from "./OverwriteConfirm/OverwriteConfirm";
 import { sidebarRightIcon } from "./icons";
@@ -85,6 +86,7 @@ interface LayerUIProps {
   langCode: Language["code"];
   renderTopLeftUI?: ExcalidrawProps["renderTopLeftUI"];
   renderTopRightUI?: ExcalidrawProps["renderTopRightUI"];
+  renderBottomLeftUI?: ExcalidrawProps["renderBottomLeftUI"];
   renderCustomStats?: ExcalidrawProps["renderCustomStats"];
   UIOptions: AppProps["UIOptions"];
   onExportImage: AppClassProperties["onExportImage"];
@@ -146,6 +148,7 @@ const LayerUI = ({
   showExitZenModeBtn,
   renderTopLeftUI,
   renderTopRightUI,
+  renderBottomLeftUI,
   renderCustomStats,
   UIOptions,
   onExportImage,
@@ -551,6 +554,7 @@ const LayerUI = ({
           }}
         />
       )}
+      <AddToLibraryDialog />
       <ActiveConfirmDialog />
       {defaultUIEnabled && appState.openDialog?.name === "elementLinkSelector" && (
         <ElementLinkDialog
@@ -618,6 +622,7 @@ const LayerUI = ({
               renderWelcomeScreen={renderWelcomeScreen}
               defaultUIEnabled={defaultUIEnabled}
               zoomUIEnabled={zoomUIEnabled}
+              renderBottomLeftUI={renderBottomLeftUI}
             />
             {(appState.toast ||
               (scrollBackToContentUIEnabled && appState.scrolledOutside)) && (

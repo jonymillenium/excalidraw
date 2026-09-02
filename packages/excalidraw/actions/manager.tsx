@@ -220,6 +220,7 @@ export class ActionManager {
           app={this.app}
           data={data}
           renderAction={this.renderAction}
+          executeAction={(name) => this.executeAction(this.actions[name], "ui")}
         />
       );
     }

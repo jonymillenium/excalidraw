@@ -12,7 +12,7 @@ import {
   distance,
   getFontString,
   toBrandedType,
-  applyDarkModeFilter,
+  applyCanvasBackgroundColorFilter,
 } from "@excalidraw/common";
 
 import { getCommonBounds, getElementAbsoluteCoords } from "@excalidraw/element";
@@ -297,6 +297,7 @@ export const exportToSvg = async (
     exportPadding?: number;
     exportScale?: number;
     viewBackgroundColor: string;
+    viewBackgroundColorMode?: AppState["viewBackgroundColorMode"];
     exportWithDarkMode?: boolean;
     exportEmbedScene?: boolean;
     frameRendering?: AppState["frameRendering"];
@@ -323,14 +324,18 @@ export const exportToSvg = async (
     viewBackgroundColor,
     exportScale = 1,
     exportEmbedScene,
+    viewBackgroundColorMode = "theme",
   } = appState;
+
+  const renderWithDarkMode =
+    exportWithDarkMode && viewBackgroundColorMode !== "exact";
 
   const { exportingFrame = null } = opts || {};
 
   const elementsForRender = prepareElementsForRender({
     elements,
     exportingFrame,
-    exportWithDarkMode,
+    exportWithDarkMode: renderWithDarkMode,
     frameRendering,
   });
 
@@ -463,7 +468,11 @@ export const exportToSvg = async (
     rect.setAttribute("height", `${height}`);
     rect.setAttribute(
       "fill",
-      applyDarkModeFilter(viewBackgroundColor, exportWithDarkMode),
+      applyCanvasBackgroundColorFilter(
+        viewBackgroundColor,
+        exportWithDarkMode,
+        viewBackgroundColorMode,
+      ),
     );
     svgRoot.appendChild(rect);
   }
@@ -486,7 +495,7 @@ export const exportToSvg = async (
       offsetX,
       offsetY,
       isExporting: true,
-      exportWithDarkMode,
+      exportWithDarkMode: renderWithDarkMode,
       renderEmbeddables,
       frameRendering,
       canvasBackgroundColor: viewBackgroundColor,
@@ -498,7 +507,7 @@ export const exportToSvg = async (
           )
         : new Map(),
       reuseImages: opts?.reuseImages ?? true,
-      theme: exportWithDarkMode ? THEME.DARK : THEME.LIGHT,
+      theme: renderWithDarkMode ? THEME.DARK : THEME.LIGHT,
     },
   );
 

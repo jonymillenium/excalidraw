@@ -237,7 +237,7 @@ export const isTextBindableContainer = <T extends ExcalidrawElement>(
     (element.type === "rectangle" ||
       element.type === "diamond" ||
       element.type === "ellipse" ||
-      isArrowElement(element))
+      isLinearElement(element))
   );
 };
 

@@ -189,4 +189,35 @@ describe("duplicate element on move when ALT is clicked", () => {
 
     h.elements.forEach((element) => expect(element).toMatchSnapshot());
   });
+
+  it("keeps the duplicate aligned to its source with smart guides", async () => {
+    const { getByToolName, container } = await render(<Excalidraw />);
+    const canvas = container.querySelector("canvas.interactive")!;
+
+    act(() => {
+      h.setState({ objectsSnapModeEnabled: true, width: 800, height: 600 });
+    });
+
+    fireEvent.click(getByToolName("rectangle"));
+    fireEvent.pointerDown(canvas, { clientX: 30, clientY: 20 });
+    fireEvent.pointerMove(canvas, { clientX: 60, clientY: 70 });
+    fireEvent.pointerUp(canvas, { clientX: 60, clientY: 70 });
+
+    fireEvent.pointerDown(canvas, { clientX: 50, clientY: 20 });
+    fireEvent.pointerMove(canvas, {
+      clientX: 100,
+      clientY: 22,
+      altKey: true,
+    });
+    fireEvent.pointerMove(canvas, {
+      clientX: 111,
+      clientY: 22,
+      altKey: true,
+    });
+    fireEvent.pointerUp(canvas, { clientX: 111, clientY: 22, altKey: true });
+
+    expect(h.elements).toHaveLength(2);
+    expect([h.elements[0].x, h.elements[0].y]).toEqual([30, 20]);
+    expect([h.elements[1].x, h.elements[1].y]).toEqual([91, 20]);
+  });
 });

@@ -1,4 +1,4 @@
-import { COLOR_WHITE } from "@excalidraw/common";
+import { COLOR_WHITE, THEME } from "@excalidraw/common";
 
 import { bootstrapCanvas } from "./helpers";
 
@@ -12,16 +12,26 @@ const setup = () => {
   return { canvas, context, clearRect, fillRect };
 };
 
-const run = (viewBackgroundColor: unknown) => {
+const run = (
+  viewBackgroundColor: unknown,
+  theme?: typeof THEME[keyof typeof THEME],
+  viewBackgroundColorMode: "theme" | "exact" = "theme",
+) => {
   const { canvas, context, clearRect, fillRect } = setup();
+  let fillStyleAtFillTime = "";
+  fillRect.mockImplementation(() => {
+    fillStyleAtFillTime = context.fillStyle as string;
+  });
   bootstrapCanvas({
     canvas,
     scale: 1,
     normalizedWidth: 200,
     normalizedHeight: 100,
+    theme,
     viewBackgroundColor: viewBackgroundColor as string,
+    viewBackgroundColorMode,
   });
-  return { context, clearRect, fillRect };
+  return { context, clearRect, fillRect, fillStyleAtFillTime };
 };
 
 describe("bootstrapCanvas background painting", () => {
@@ -35,6 +45,20 @@ describe("bootstrapCanvas background painting", () => {
     const { clearRect, fillRect } = run("#fff");
     expect(clearRect).not.toHaveBeenCalled();
     expect(fillRect).toHaveBeenCalledTimes(1);
+  });
+
+  it("paints profile colors literally in exact mode", () => {
+    expect(run("#000000", THEME.DARK, "exact").fillStyleAtFillTime).toBe(
+      "#000000",
+    );
+    expect(run("#313131", THEME.DARK, "exact").fillStyleAtFillTime).toBe(
+      "#313131",
+    );
+  });
+
+  it("retains the original Excalidraw transform in theme mode", () => {
+    expect(run("#000000", THEME.DARK).fillStyleAtFillTime).toBe("#ededed");
+    expect(run("#ffffff", THEME.DARK).fillStyleAtFillTime).toBe("#121212");
   });
 
   it("clears for a hex color with alpha (#RGBA / #RRGGBBAA)", () => {

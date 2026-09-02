@@ -271,6 +271,7 @@ export type ExcalidrawTextContainer =
   | ExcalidrawRectangleElement
   | ExcalidrawDiamondElement
   | ExcalidrawEllipseElement
+  | ExcalidrawLineElement
   | ExcalidrawArrowElement;
 
 export type ExcalidrawTextElementWithContainer = {

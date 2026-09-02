@@ -1,0 +1,67 @@
+{
+  "name": "xcalidraw-by-kurk",
+  "version": "1.4.1",
+  "private": true,
+  "author": "Kurk",
+  "description": "Aplicación macOS local-first Xcalidraw by Kurk",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node build.mjs"
+  },
+  "devDependencies": {
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.kurk.xcalidraw",
+    "productName": "Xcalidraw by Kurk",
+    "artifactName": "Xcalidraw-by-Kurk-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.mjs",
+      "preload.mjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../excalidraw-app/build",
+        "to": "app"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Xcalidraw by Kurk",
+      "sign": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "jonymillenium",
+      "repo": "excalidraw"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

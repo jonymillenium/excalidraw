@@ -184,6 +184,7 @@ export type ExcalidrawElementSkeleton =
       type: Extract<ExcalidrawLinearElement["type"], "line">;
       x: number;
       y: number;
+      label?: ValidLinearElement["label"];
     } & Partial<ExcalidrawLinearElement>)
   | ValidContainer
   | ValidLinearElement
@@ -668,6 +669,7 @@ export const convertToExcalidrawElements = (
       case "rectangle":
       case "ellipse":
       case "diamond":
+      case "line":
       case "arrow": {
         if (element.label?.text) {
           let [container, text] = bindTextToContainer(

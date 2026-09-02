@@ -110,6 +110,7 @@ export const getDefaultAppState = (): Omit<
     elementsToHighlight: null,
     toast: null,
     viewBackgroundColor: COLOR_PALETTE.white,
+    viewBackgroundColorMode: "theme",
     zenModeEnabled: false,
     zoom: {
       value: 1 as NormalizedZoomValue,
@@ -248,6 +249,7 @@ const APP_STATE_STORAGE_CONF = (<
   elementsToHighlight: { browser: false, export: false, server: false },
   toast: { browser: false, export: false, server: false },
   viewBackgroundColor: { browser: true, export: true, server: true },
+  viewBackgroundColorMode: { browser: true, export: true, server: true },
   width: { browser: false, export: false, server: false },
   zenModeEnabled: { browser: true, export: false, server: false },
   zoom: { browser: true, export: false, server: false },

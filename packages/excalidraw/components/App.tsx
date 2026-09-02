@@ -87,7 +87,7 @@ import {
   getDateTime,
   isShallowEqual,
   arrayToMap,
-  applyDarkModeFilter,
+  applyCanvasBackgroundColorFilter,
   AppEventBus,
   type EXPORT_IMAGE_TYPES,
   randomInteger,
@@ -2191,7 +2191,7 @@ class App extends React.Component<AppProps, AppState> {
               }
             }}
             style={{
-              background: applyDarkModeFilter(
+              background: applyCanvasBackgroundColorFilter(
                 this.state.viewBackgroundColor,
                 isDarkTheme,
               ),
@@ -2285,7 +2285,12 @@ class App extends React.Component<AppProps, AppState> {
 
   public render() {
     const selectedElements = this.scene.getSelectedElements(this.state);
-    const { renderTopRightUI, renderTopLeftUI, renderCustomStats } = this.props;
+    const {
+      renderTopRightUI,
+      renderTopLeftUI,
+      renderBottomLeftUI,
+      renderCustomStats,
+    } = this.props;
 
     const {
       elementsMap: renderableElementsMap,
@@ -2413,6 +2418,7 @@ class App extends React.Component<AppProps, AppState> {
                             langCode={getLanguage().code}
                             renderTopLeftUI={renderTopLeftUI}
                             renderTopRightUI={renderTopRightUI}
+                            renderBottomLeftUI={renderBottomLeftUI}
                             renderCustomStats={renderCustomStats}
                             showExitZenModeBtn={
                               typeof this.props?.zenModeEnabled ===
@@ -5001,6 +5007,16 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   toggleLock = (source: "keyboard" | "ui" = "ui") => {
+    if (
+      source === "ui" &&
+      this.scene.getSelectedElements({
+        selectedElementIds: this.state.selectedElementIds,
+        includeBoundTextElement: false,
+      }).length > 0
+    ) {
+      this.actionManager.executeAction(actionToggleElementLock, "ui");
+      return;
+    }
     if (this.props.activeTool) {
       // the active tool — including its lock state — is host-controlled
       return;
@@ -6627,7 +6643,7 @@ class App extends React.Component<AppProps, AppState> {
         this.scene.getNonDeletedElementsMap(),
       );
       if (
-        isArrowElement(elements[index]) &&
+        isLinearElement(elements[index]) &&
         hitElementItself({
           point: pointFrom(x, y),
           element: elements[index],
@@ -6753,7 +6769,7 @@ class App extends React.Component<AppProps, AppState> {
       !existingTextElement &&
       shouldBindToContainer &&
       container &&
-      !isArrowElement(container)
+      !isLinearElement(container)
     ) {
       const fontString = {
         fontSize,
@@ -6848,7 +6864,7 @@ class App extends React.Component<AppProps, AppState> {
         groupIds: container?.groupIds ?? [],
         lineHeight,
         angle: container
-          ? isArrowElement(container)
+          ? isLinearElement(container)
             ? (0 as Radians)
             : container.angle
           : (0 as Radians),
@@ -7054,7 +7070,8 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (
-        ((event[KEYS.CTRL_OR_CMD] && isSimpleArrow(selectedLinearElement)) ||
+        event[KEYS.CTRL_OR_CMD] &&
+        (isSimpleArrow(selectedLinearElement) ||
           isLineElement(selectedLinearElement)) &&
         (!this.state.selectedLinearElement?.isEditing ||
           this.state.selectedLinearElement.elementId !==
@@ -11155,8 +11172,15 @@ class App extends React.Component<AppProps, AppState> {
                 }
               });
 
-              this.maybeCacheVisibleGaps(event, selectedElements, true);
-              this.maybeCacheReferenceSnapPoints(event, selectedElements, true);
+              // The duplicates are now selected and moving. Exclude them from
+              // snap references so their stationary originals become valid
+              // alignment targets instead of the copies snapping to themselves.
+              this.maybeCacheVisibleGaps(event, duplicatedElements, true);
+              this.maybeCacheReferenceSnapPoints(
+                event,
+                duplicatedElements,
+                true,
+              );
             });
           }
 

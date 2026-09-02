@@ -137,6 +137,25 @@ describe("exportToSvg", () => {
     });
   });
 
+  it("keeps profile background and element colors exact in dark export", async () => {
+    const svgElement = await exportUtils.exportToSvg(
+      ELEMENTS,
+      {
+        ...DEFAULT_OPTIONS,
+        exportBackground: true,
+        exportWithDarkMode: true,
+        viewBackgroundColor: "#313131",
+        viewBackgroundColorMode: "exact",
+      },
+      null,
+    );
+
+    expect(svgElement.querySelector("rect")).toHaveAttribute("fill", "#313131");
+    svgElement.querySelectorAll("text").forEach((textEl) => {
+      expect(textEl.getAttribute("fill")).toBe(textFixture.strokeColor);
+    });
+  });
+
   it("with exportPadding", async () => {
     const svgElement = await exportUtils.exportToSvg(
       ELEMENTS,

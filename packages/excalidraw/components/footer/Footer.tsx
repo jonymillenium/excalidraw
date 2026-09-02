@@ -9,7 +9,7 @@ import { Section } from "../Section";
 import Stack from "../Stack";
 
 import type { ActionManager } from "../../actions/manager";
-import type { UIAppState } from "../../types";
+import type { ExcalidrawProps, UIAppState } from "../../types";
 
 const Footer = ({
   appState,
@@ -18,6 +18,7 @@ const Footer = ({
   renderWelcomeScreen,
   defaultUIEnabled,
   zoomUIEnabled,
+  renderBottomLeftUI,
 }: {
   appState: UIAppState;
   actionManager: ActionManager;
@@ -25,6 +26,7 @@ const Footer = ({
   renderWelcomeScreen: boolean;
   defaultUIEnabled: boolean;
   zoomUIEnabled: boolean;
+  renderBottomLeftUI?: ExcalidrawProps["renderBottomLeftUI"];
 }) => {
   const { FooterCenterTunnel, WelcomeScreenHelpHintTunnel } = useTunnels();
   const app = useApp();
@@ -49,6 +51,8 @@ const Footer = ({
               {zoomUIEnabled && app.isNavigationEnabled() && (
                 <ZoomActions renderAction={actionManager.renderAction} />
               )}
+
+              {renderBottomLeftUI?.(appState)}
 
               {defaultUIEnabled && !appState.viewModeEnabled && (
                 <UndoRedoActions

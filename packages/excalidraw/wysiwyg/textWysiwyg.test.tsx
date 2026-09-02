@@ -1887,6 +1887,46 @@ describe("textWysiwyg", () => {
       expect(h.elements[1].angle).toBe(0);
     });
 
+    it("should create and edit a centered label on a line by double clicking", async () => {
+      const line = API.createElement({
+        type: "line",
+        x: 40,
+        y: 50,
+        width: 200,
+        height: 0,
+        points: [pointFrom(0, 0), pointFrom(200, 0)],
+      });
+
+      API.setElements([line]);
+      API.setSelectedElements([line]);
+
+      mouse.doubleClickAt(line.x + line.width / 2, line.y);
+
+      let editor = await getTextEditor();
+      updateTextEditor(editor, "Comentario");
+      Keyboard.exitTextEditor(editor);
+
+      expect(h.elements).toHaveLength(2);
+      const label = h.elements[1] as ExcalidrawTextElementWithContainer;
+      expect(label.containerId).toBe(line.id);
+      expect(label.angle).toBe(0);
+      expect(line.boundElements).toStrictEqual([
+        { id: label.id, type: "text" },
+      ]);
+
+      API.setSelectedElements([line]);
+      mouse.doubleClickAt(line.x + line.width / 2, line.y);
+
+      editor = await getTextEditor();
+      updateTextEditor(editor, "Comentario actualizado");
+      Keyboard.exitTextEditor(editor);
+
+      expect(h.elements).toHaveLength(2);
+      expect((h.elements[1] as ExcalidrawTextElement).text).toBe(
+        "Comentario actualizado",
+      );
+    });
+
     it("should keep the text label at the same degrees when used as a non-arrow label", async () => {
       const rectangle = API.createElement({
         type: "rectangle",

@@ -317,13 +317,14 @@ describe("Test Linear Elements", () => {
     expect(h.state.selectedLinearElement?.elementId).toEqual(h.elements[0].id);
   });
 
-  it("should enter line editor on dblclick (line)", () => {
+  it("should create a label instead of entering line editor on dblclick (line)", async () => {
     createTwoPointerLinearElement("line");
     expect(h.state.selectedLinearElement?.isEditing).toBe(false);
 
-    mouse.doubleClick();
-    expect(h.state.selectedLinearElement?.isEditing).toBe(true);
-    expect(h.state.selectedLinearElement?.elementId).toEqual(h.elements[0].id);
+    mouse.doubleClickAt(midpoint[0], midpoint[1]);
+    expect(h.state.selectedLinearElement?.isEditing).toBe(false);
+    expect(h.elements).toHaveLength(2);
+    await getTextEditor();
   });
 
   it("should not enter line editor on dblclick (arrow)", async () => {
@@ -1200,12 +1201,23 @@ describe("Test Linear Elements", () => {
       ).toMatchSnapshot();
     });
 
-    it("should not bind text to line when double clicked", async () => {
+    it("should bind text to line when double clicked", async () => {
       const line = createTwoPointerLinearElement("line");
 
       expect(h.elements.length).toBe(1);
-      mouse.doubleClickAt(line.x, line.y);
-      expect(h.elements.length).toBe(1);
+      mouse.doubleClickAt(midpoint[0], midpoint[1]);
+      expect(h.elements.length).toBe(2);
+
+      const text = h.elements[1] as ExcalidrawTextElementWithContainer;
+      expect(text.type).toBe("text");
+      expect(text.containerId).toBe(line.id);
+      expect(text.angle).toBe(0);
+
+      const editor = await getTextEditor();
+      fireEvent.change(editor, { target: { value: DEFAULT_TEXT } });
+      Keyboard.exitTextEditor(editor);
+
+      expect(line.boundElements).toStrictEqual([{ id: text.id, type: "text" }]);
     });
 
     // TODO fix #7029 and rewrite this test

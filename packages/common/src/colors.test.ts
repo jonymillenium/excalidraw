@@ -1,8 +1,27 @@
 import {
+  applyCanvasBackgroundColorFilter,
   applyDarkModeFilter,
   COLOR_PALETTE,
   rgbToHex,
 } from "@excalidraw/common";
+
+describe("applyCanvasBackgroundColorFilter", () => {
+  it("preserves the selected color in exact profile mode", () => {
+    expect(applyCanvasBackgroundColorFilter("#000000", true, "exact")).toBe(
+      "#000000",
+    );
+    expect(applyCanvasBackgroundColorFilter("#313131", true, "exact")).toBe(
+      "#313131",
+    );
+  });
+
+  it("retains Excalidraw's original dark-mode filtering in theme mode", () => {
+    expect(applyCanvasBackgroundColorFilter("#000000")).toBe("#ededed");
+    expect(applyCanvasBackgroundColorFilter("#ffffff")).toBe("#121212");
+    expect(applyCanvasBackgroundColorFilter("#ff0000")).toBe("#ff9090");
+    expect(applyCanvasBackgroundColorFilter("#000000", false)).toBe("#000000");
+  });
+});
 
 describe("COLOR_PALETTE", () => {
   it("color palette doesn't regress", () => {

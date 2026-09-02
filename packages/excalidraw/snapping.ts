@@ -115,7 +115,18 @@ export type GapSnapLine = {
   points: PointPair;
 };
 
-export type SnapLine = PointSnapLine | GapSnapLine | PointerSnapLine;
+export type DistanceSnapLine = {
+  type: "distance";
+  direction: "horizontal" | "vertical";
+  points: PointPair;
+  distance: number;
+};
+
+export type SnapLine =
+  | PointSnapLine
+  | GapSnapLine
+  | DistanceSnapLine
+  | PointerSnapLine;
 
 // -----------------------------------------------------------------------------
 
@@ -125,6 +136,7 @@ export class SnapCache {
   private static visibleGaps: {
     verticalGaps: Gap[];
     horizontalGaps: Gap[];
+    referenceBounds: Bounds[];
   } | null = null;
 
   public static setReferenceSnapPoints = (snapPoints: GlobalPoint[] | null) => {
@@ -139,6 +151,7 @@ export class SnapCache {
     gaps: {
       verticalGaps: Gap[];
       horizontalGaps: Gap[];
+      referenceBounds: Bounds[];
     } | null,
   ) => {
     SnapCache.visibleGaps = gaps;
@@ -440,6 +453,7 @@ export const getVisibleGaps = (
   return {
     horizontalGaps,
     verticalGaps,
+    referenceBounds,
   };
 };
 
@@ -800,9 +814,26 @@ export const snapDraggedElements = (
     ) as GapSnap[],
   );
 
+  const referenceBounds = SnapCache.getVisibleGaps()?.referenceBounds ?? [];
+  const distanceSnapLines = createDistanceSnapLines(
+    getDraggedElementsBounds(
+      selectedElements,
+      newDragOffset,
+    ) as unknown as Bounds,
+    referenceBounds,
+  );
+  const gapLineKeys = new Set(gapSnapLines.map(getMeasurementLineKey));
+
   return {
     snapOffset,
-    snapLines: [...pointSnapLines, ...gapSnapLines],
+    snapLines: [
+      ...pointSnapLines,
+      ...gapSnapLines,
+      ...distanceSnapLines.filter(
+        (distanceSnapLine) =>
+          !gapLineKeys.has(getMeasurementLineKey(distanceSnapLine)),
+      ),
+    ],
   };
 };
 
@@ -910,6 +941,146 @@ const dedupeGapSnapLines = (gapSnapLines: GapSnapLine[]) => {
   }
 
   return Array.from(map.values());
+};
+
+const getMeasurementLineKey = (snapLine: GapSnapLine | DistanceSnapLine) => {
+  const points = [...snapLine.points].sort((a, b) =>
+    a[0] === b[0] ? a[1] - b[1] : a[0] - b[0],
+  );
+
+  return `${snapLine.direction}:${points
+    .flat()
+    .map((coordinate) => round(coordinate))
+    .join(",")}`;
+};
+
+type DistanceCandidate = {
+  line: DistanceSnapLine;
+  overlap: number;
+};
+
+const preferDistanceCandidate = (
+  current: DistanceCandidate | null,
+  candidate: DistanceCandidate,
+) => {
+  if (
+    !current ||
+    candidate.line.distance < current.line.distance ||
+    (candidate.line.distance === current.line.distance &&
+      candidate.overlap > current.overlap)
+  ) {
+    return candidate;
+  }
+
+  return current;
+};
+
+/**
+ * Creates live, Figma-style measurements between the dragged selection bounds
+ * and the closest visible neighbour on each side. Keeping this separate from
+ * gap snapping means the labels continue updating even when no equal-spacing
+ * snap is currently active.
+ */
+export const createDistanceSnapLines = (
+  draggedBounds: Bounds,
+  referenceBounds: readonly Bounds[],
+): DistanceSnapLine[] => {
+  const [minX, minY, maxX, maxY] = draggedBounds;
+  let left: DistanceCandidate | null = null;
+  let right: DistanceCandidate | null = null;
+  let top: DistanceCandidate | null = null;
+  let bottom: DistanceCandidate | null = null;
+
+  for (const bounds of referenceBounds) {
+    const [referenceMinX, referenceMinY, referenceMaxX, referenceMaxY] = bounds;
+    const verticalOverlap = rangeIntersection(
+      rangeInclusive(minY, maxY),
+      rangeInclusive(referenceMinY, referenceMaxY),
+    );
+
+    if (verticalOverlap) {
+      const y = round((verticalOverlap[0] + verticalOverlap[1]) / 2);
+      const overlap = verticalOverlap[1] - verticalOverlap[0];
+
+      if (referenceMaxX <= minX) {
+        const distance = round(minX - referenceMaxX);
+        left = preferDistanceCandidate(left, {
+          line: {
+            type: "distance",
+            direction: "horizontal",
+            points: [
+              pointFrom(round(referenceMaxX), y),
+              pointFrom(round(minX), y),
+            ],
+            distance,
+          },
+          overlap,
+        });
+      }
+
+      if (maxX <= referenceMinX) {
+        const distance = round(referenceMinX - maxX);
+        right = preferDistanceCandidate(right, {
+          line: {
+            type: "distance",
+            direction: "horizontal",
+            points: [
+              pointFrom(round(maxX), y),
+              pointFrom(round(referenceMinX), y),
+            ],
+            distance,
+          },
+          overlap,
+        });
+      }
+    }
+
+    const horizontalOverlap = rangeIntersection(
+      rangeInclusive(minX, maxX),
+      rangeInclusive(referenceMinX, referenceMaxX),
+    );
+
+    if (horizontalOverlap) {
+      const x = round((horizontalOverlap[0] + horizontalOverlap[1]) / 2);
+      const overlap = horizontalOverlap[1] - horizontalOverlap[0];
+
+      if (referenceMaxY <= minY) {
+        const distance = round(minY - referenceMaxY);
+        top = preferDistanceCandidate(top, {
+          line: {
+            type: "distance",
+            direction: "vertical",
+            points: [
+              pointFrom(x, round(referenceMaxY)),
+              pointFrom(x, round(minY)),
+            ],
+            distance,
+          },
+          overlap,
+        });
+      }
+
+      if (maxY <= referenceMinY) {
+        const distance = round(referenceMinY - maxY);
+        bottom = preferDistanceCandidate(bottom, {
+          line: {
+            type: "distance",
+            direction: "vertical",
+            points: [
+              pointFrom(x, round(maxY)),
+              pointFrom(x, round(referenceMinY)),
+            ],
+            distance,
+          },
+          overlap,
+        });
+      }
+    }
+  }
+
+  return [left, right, top, bottom]
+    .filter((candidate): candidate is DistanceCandidate => !!candidate)
+    .map((candidate) => candidate.line);
 };
 
 const createGapSnapLines = (
